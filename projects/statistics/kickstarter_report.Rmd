@@ -1,0 +1,1274 @@
+---
+title: "Lab 2: What Makes a Successful Kickstarter Campaign?"
+author: "Bronte Baer, Danny Collins, Amy Ho, Victor Inyang"
+date: "March 14, 2022"
+output:
+  pdf_document:
+    toc: yes
+    number_sections: yes
+    toc_depth: 3
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    df_print: paged
+---
+
+\newpage
+\setcounter{page}{1}
+
+```{r setup, echo = FALSE, message=FALSE, warning=FALSE}
+# package loading code from https://vbaliga.github.io/verify-that-r-packages-are-installed-and-loaded/
+## If a package is installed, it will be loaded. If any 
+## are not, the missing package(s) will be installed 
+## from CRAN and then loaded.
+## First specify the packages of interest
+packages = c("tidyverse", "sandwich", "stargazer", "lmtest",
+             "patchwork", "sqldf", "knitr", "ggcorrplot","scales",
+             "gridExtra", "kableExtra")
+## Now load or install&load all
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r ggplot setup}
+theme_set(theme(plot.title = element_text(size=11),
+        axis.title = element_text(size=9)))
+
+state_colors <- c('#4B4E6D', '#6A8D92')
+kickstarter_palette <- c('#493548', '#4B4E6D', '#6A8D92', '#80B192', '#A1E887')
+```
+
+```{r get dataset, results='hide'}
+
+source('./src/data_make_source_dfs.R') # loads files that create and run filters/transforms
+df <- get_transformed_df(df_type='discovery') # get 30% of rows used for discovery
+df_test <- get_transformed_df(df_type='test') # get 70% of rows used for testing
+# df <- get_transformed_df(df_type='all') # get all rows
+# df <- get_transformed_df() # defaults to df_type='discovery'
+
+```
+
+# Introduction
+
+## Motivation
+
+Crowdfunding has become an increasingly popular option for entrepreneurs, and while there are many platforms to choose from, Kickstarter is the biggest. The company discloses a wide range of statistics, and its sizeable organic community and press coverage outshine all other platforms.^[V., Narek. "Indiegogo vs Kickstarter: Which One to Choose? (2022 Update)." _The Crowdfunding Formula_, 1 Mar. 2021, https://blog.thecrowdfundingformula.com/indiegogo-vs-kickstarter/.] The platform prides itself on allowing creators to "make ideas into reality."^["About." _Kickstarter_, https://www.kickstarter.com/about.] The platform focuses on projects that create something tangible, but there are otherwise minimal rules and guidelines for people to follow. Anyone can create a campaign and decide the details for the campaign. While all this freedom is part of the appeal for entrepreneurs to use Kickstarter to fund their ideas, there is a lot of ambiguity regarding what makes a successful campaign. In early 2021, multiple articles were published stating that 2020 holds the record for the most money raised on Kickstarter; however, "the number of funded projects [wa]s actually lower than previous years."^[Bidaux, Thomas. "Kickstarter in 2020 for Games." _Medium_, ICO, 25 Jan. 2021, https://medium.com/icopartners/kickstarter-in-2020-for-games-70d26b5cba73.] Furthermore, according to Kickstarter statistics, less than half of launched campaigns reach their goal.^["Stats." _Kickstarter_, https://www.kickstarter.com/help/stats. ]  With all this in mind, our research aims to inform someone who is going to start a Kickstarter campaign about the factors that will most likely help their campaign succeed.
+
+![](ks_money.png){width=50%} ![](ks_projects.png){width=50%}
+
+## Research Question
+
+Setting up a successful Kickstarter campaign is less straightforward than one might expect. Numerous factors impact a campaign's success, and our research aims to address a few key measurable and tracked options that a campaigner can keep in mind when creating their project.
+
+The main research question our analysis seeks to answer is:
+
+> _Which project details increase the chance of a Kickstarter campaign's success?_\
+> _More specifically, what magnitude of initial funding goal should a campaigner set?_\
+> _How does the campaign category change which factors matter for success?_
+
+This study explores the relationship between a campaign reaching its funding goal and the funding goal set. Additionally, we examine supplementary variables to further our analysis and help us understand the funding goal amount set. As creators continue to turn to Kickstarter to fund their projects, we hope to provide descriptive statistics to supplement the observational ones Kickstarter supplies. Kickstarter reports the _what_, but we aim to supply insight into the _how_.
+
+# Data and Methodology
+
+## About the Data
+
+Our analysis uses data scraped from Kickstarter by Web Robots, a company that specializes in providing datasets via web crawling. The company provides a new Kickstarter dataset monthly, with datasets dating back to 2014. Each dataset contains one row per campaign ID and category, with some campaigns marked as multiple categories. 
+
+The combined dataset contains 39 initial variables (see appendix for full data dictionary). Our particular variables of interest, whether in transformed or raw form, included:
+
+* the `category` that the campaign was listed under
+* the `launch` timestamp when the campaign began allowing backers to pledge money
+* the `deadline` timestamp by when the campaign needed to hit its goal
+* the `goal` amount that the campaign needed to hit to succeed
+* the total amount `pledged` to the campaign towards the goal
+* whether the campaign was a `staff_pick` or not while it was active
+* the `status` of the campaign, i.e. active, successful, canceled, or failed, at the time of data pull
+
+
+
+### Data Cleaning
+
+Web Robots notes that, as of April 2015, 
+
+> "Kickstarter started limiting how many projects user[s] can view in a single category. This limits the amount of historic projects we can get in a single scrape run. But recent and active projects are always included."^["Kickstarter Datasets." _Web Robots_, 29 Mar. 2022, https://webrobots.io/kickstarter-datasets/.]
+
+Given this limitation, we combined and deduplicated four datasets pulled from September 16, 2020, March 18, 2021, September 16, 2021, and March 24, 2022, to ensure we had enough data to answer the questions we are interested in answering. This combined dataset gave us 497,264 rows of data (pre-deduping).
+
+Our ingestion script starts by reading the last CSV in the most recent dataset (3/2022) and then iterates backward through each CSV in the dataset to deduplicate projects in multiple categories and/or in multiple datasets. On each iteration, any duplicate project rows in the CSV are discarded. This deduplicated set is then compared to all projects already captured in the accumulated dataset being built (which on the first iteration is an empty data frame). Any projects not yet seen in the collected dataset are then appended to the accumulated dataset. Once all CSVs in the most recent dataset are exhausted, the iteration continues to the next most recent dataset, and the process repeats. This allows us to capture the most recent "snapshot" of a project before it becomes stale, falls out of pagination, and is no longer accessible by the web scraper. When a project is listed in multiple categories, and both first appear in the same chronological dataset, the row first scanned is chosen, making the category assigned to the project somewhat random. This, and other limitations, are discussed more extensively in our limitations section.
+
+We then built our target dataset from constraints that best facilitate our research question from our raw collection of unique projects. We recognize that the landscape of world commerce was transformed dramatically by the pandemic and that patterns seen before March 2020 may drastically differ from ones seen since. Since our research question revolves around the success of projects moving forward, we limited our dataset to projects launched on April 1, 2020, or later. We further limited our dataset to United States-based projects funded in USD, to avoid complexities from different countries' national economies being in different states since the pandemic and to avoid conversion complexities for currencies.
+
+We then reduced our dataset to projects that had reached finality in either a "successful" or "failed" state. Projects that are still actively raising pledges were discarded because we do not know whether they will be successful, and similarly, with canceled projects, we do not know the reason or status as of when they were canceled.
+
+We also removed what we deemed to be extreme outliers that would complicate modeling the dataset at large and are rare enough that there is little value in modeling them. We removed projects that raised \$0 or had a goal of less than \$100 or greater than \$1,000,000. These outliers made up about 1% of the dataset.
+
+The outlier reduction resulted in `r nrow(df) + nrow(df_test)` projects, and of these, we dedicated 30% (`r nrow(df)` projects) for early data analysis and discovery. We reserved the remaining 70% (`r nrow(df_test)` projects) for analyzing the performance of our designed estimators.
+
+
+## Defining Success
+
+Kickstarter allows creators to set their own funding goals and follows an all-or-nothing model. If the total amount of money pledged is at least equal to the funding goal by the deadline, then the campaign is marked as a success, and the funds raised are disbursed. If the goal is not met, then regardless of how much the campaign was short, it is considered a failed campaign, and funds are not taken from backers.
+
+We considered there might be value in using the rate-of-goal pledged (i.e., how close the campaign got to reaching 100% or exceeding 100%) instead of discarding this fidelity to look at whether 100% of the goal was met or exceeded as a binary variable. However, on the contrary, we observed that successful and failed campaigns follow distinct trendlines that become increasingly divergent as campaign goals increase.
+
+
+```{r success explanation}
+# scatter and trend models for pledge rate of goal graph
+hist_df = df %>% mutate(
+  goal_bucket_center=10^(round(2*log10(goal))/2),
+  
+  goal,
+  
+  all_nom=log10(goal_rate_pledged),
+  all_one=1,
+  
+  success_nom=log10(goal_rate_pledged)*(goal_rate_pledged>=1),
+  success_one=1*(goal_rate_pledged>=1),
+  
+  fail_nom=log10(goal_rate_pledged)*(goal_rate_pledged<1),
+  fail_one=1*(goal_rate_pledged<1),
+  
+  
+) %>% select (
+  goal_bucket_center,
+  goal,
+  all_nom,
+  all_one,
+  success_nom,
+  success_one,
+  fail_nom,
+  fail_one
+) %>% 
+  arrange(goal) %>%
+  # filter(goal_bucket_center>306227.7660)
+  group_by(goal_bucket_center) %>% 
+  
+  summarise(
+    avg_of_success=10^(sum(success_nom)/sum(success_one)),
+    avg_of_fail=10^(sum(fail_nom)/sum(fail_one)),
+    avg_of_all=10^(sum(all_nom)/sum(all_one)),
+    success_rate=sum(success_one)/sum(all_one),
+    count_in_bucket = sum(all_one)
+) %>% 
+  mutate(
+  success_rate_transformed=10^(-2+4*success_rate)
+)
+
+df %>%
+  mutate(
+    campaign_result=case_when(
+      reached_goal == 1 ~ 'Funding Successful',
+      TRUE ~ 'Funding Failed'
+    )
+  ) %>%
+  ggplot() +
+  aes(x=goal,y=goal_rate_pledged,color=campaign_result) +
+  geom_point(
+    size=0.5
+    ) +
+  ggtitle('Percent Raised by Total Goal Amount') +
+  xlab('Project Goal Amount') +
+  scale_x_continuous(
+    trans='log10',
+    breaks=trans_breaks(
+      'log10',
+      function(x) 10^x),
+      labels=label_dollar()
+    ) +
+  ylab('Percent of Goal Raised') +
+  scale_y_continuous(
+    trans='log10',
+    breaks=trans_breaks(
+      'log10',
+      function(x) 10^x),
+      labels=label_percent(big.mark=','),
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position="bottom",
+    legend.title=element_blank(),
+    plot.margin = margin(0.5,1,0.5,0.5, "cm")
+  ) +
+  geom_line(
+    stat = "smooth",
+    data=hist_df,
+    # method = "lm",
+    # formula = I(      (10^0.55)*(y>=1) -0.2            ) ~ x + I(x^2) + I(x^3),
+    # se=FALSE,
+    size=1.0,
+    linetype="longdash",
+    alpha = 1.0,
+    aes(
+      x=goal_bucket_center,
+      y=success_rate_transformed,
+      color="Success Rate**")
+  ) +
+  geom_line(
+    stat = "smooth",
+    data=hist_df,
+    # method = "lm",
+    # formula = y ~ x + I(x^2) + I(x^3) + I(x^4),
+    # se=FALSE,
+    linetype ="dashed",
+    size=1.0,
+    alpha = 1.0,
+    aes(x=goal_bucket_center,y=avg_of_all,color="Mean of All")
+  ) +
+  geom_line(
+    stat = "smooth",
+    data=hist_df,
+    # method = "lm",
+    # data=subset(df, goal_rate_pledged >= 1),
+    # formula = y ~ x + I(x^2) + I(x^3),
+    # se=TRUE,
+    # fill="#A1B8CF",
+    size=0.75,
+    aes(x=goal_bucket_center,y=avg_of_success,color="Mean of Successful")
+  ) +
+  geom_line(
+    stat = "smooth",
+    # method = "lm",
+    data=hist_df,
+    #x=hist_df$goal_bucket_center,
+    #y=hist_df$avg_of_fail,
+    # x=hist_df$goal_bucket_center,
+    # y=hist_df$avg_of_fail,
+    #data=subset(df, goal_rate_pledged < 1),
+    # formula = y ~ x + I(x^2) + I(x^3),
+    # se=TRUE,
+    # fill="#CFA1AC",
+    size=0.75,
+    aes(x=goal_bucket_center,y=avg_of_fail,color="Mean of Failed")
+  ) +
+  theme(
+    panel.background = element_rect(
+      #fill = "#F7F2FF",
+      # colour = "#DDDDDD"
+    ),
+    panel.grid.major = element_line(
+      #colour = "#FFFFFF"
+    ),
+    legend.key.width =  unit(1, "in")
+  ) +
+  scale_color_manual(
+    values=c(
+      "Funding Failed" = "#ed5959",
+      "Funding Successful" = "#59beed",
+      "Mean of Failed" = "#AB002B",
+      "Mean of Successful" = "#004D99",
+      "Mean of All" = "#584A05", #"#634700",
+      "Success Rate**" = "#448B01"  # "#004D3B"
+    ),
+    breaks = c("Funding Failed","Funding Successful","Mean of Failed","Mean of Successful","Mean of All","Success Rate**"),
+    guide=guide_legend(override.aes = list(
+      linetype = c(NA,NA,1,1,2,5),
+      shape = c(19,19,NA,NA,NA,NA),
+      size = c(2,2,0.75,0.75,0.75,0.75),
+      fill = "#efefef"
+    ))
+  )
+```
+
+
+We found successful campaigns succeed by relatively consistent margins regardless of the goal, even ticking upward for huge goal campaigns (blue line). However, unsuccessful campaigns failed with exponential spectacularity as the goal amount increased. Complications from heteroskedasticity aside, this presents an unavoidable downward bias as the average rate of large goals dips below the theoretical minimum possible for lower goals (red line).
+
+Conversely, it becomes increasingly improbable that large-goal campaigns would exceed their goals by such extreme orders of magnitude. This asymmetry would coerce a predictor (e.g. brown short-dashed line) to travel well below the 100% threshold, even if more campaigns succeeded than failed at a given goal amount (green long-dashed line). This would result in underpredicting the chance of success for large-goal campaigns.
+
+**The success rate line does not map directly to the y-axis values and is illustrative to demonstrate the skew mentioned above, with the blue-red boundary serving as a 50/50 success rate.
+
+Due to this discovery, we decided to use the campaign `status` in our dataset as our outcome variable, categorizing the success of a campaign as a binary success or failure rather than a metric variable measuring how much success a campaign saw.
+
+
+## Campaign Characteristics
+
+For our research design, we chose to analyze variables that the campaign creator had complete control of, such as campaign length and details about the campaign deadline, and variables that the creator had less control over, such as staff pick status and campaign category.
+
+There are three key dates for a Kickstarter campaign: a `created_at` date, `launched_at` date, and `deadline` date.
+
+![](campaign_characteristics.png)
+
+
+```{r campaign length}
+campaign_length_hist_failed <- df %>%
+  filter(success_metric == 0) %>%
+  ggplot() + 
+  aes(x = launched_to_end) +
+  geom_histogram(fill = state_colors[1]) +
+  labs(title = "Histogram of Campaign Length for Failed Campaigns") + 
+  xlab("Length of Campaign in Days") + 
+  ylab("Number of Campaigns") +
+  xlim(c(0, 75)) +
+  ylim(c(0, 2000)) +
+  geom_vline(aes(xintercept = median(launched_to_end)),
+             size = 1, linetype = "dashed", color = "#493548") +
+  annotate(geom = "text", label = paste('Median:', (median(df$launched_to_end))), 
+           x = 40, y = 1000, color = "#493548", size = 3)
+
+campaign_length_hist_success <- df %>%
+  filter(success_metric == 1) %>%
+  ggplot() + 
+  aes(x = launched_to_end) +
+  geom_histogram(fill = state_colors[2]) +
+  labs(title = "Histogram of Campaign Length for Successful Campaigns") + 
+  xlab("Length of Campaign in Days") + 
+  ylab("Number of Campaigns") +
+  xlim(c(0, 75)) +
+  ylim(c(0, 2000)) +
+  geom_vline(aes(xintercept = median(launched_to_end)),
+             size = 1, linetype = "dashed", color = "#493548") +
+  annotate(geom = "text", label = paste('Median:', (median(df$launched_to_end))), 
+           x = 40, y = 1000, color = "#493548", size = 3) 
+
+(campaign_length_hist_failed / campaign_length_hist_success)
+```
+
+
+**Campaign deadline details:**\
+We believe there is a seasonal logic to when potential backers are considering crowdfunding. For example, people may be less likely to check crowdfunding sites on busier days like weekends or holidays, but may be more curious about crowdfunding during months like October, when people are starting to consider holiday gifts.
+
+
+```{r weekdays, fig.height=3}
+
+bar_by_launch_weekday <- df %>%
+  ggplot() +
+  aes(x = launched_day) +
+  geom_bar(fill = '#4B4E6D') +
+  labs(title = "Campaigns by Launch Day") +
+  xlab('Launch Day of Week') +
+  ylab('Number of Campaigns')
+
+bar_by_deadline_weekday <- df %>%
+  ggplot() +
+  aes(x = deadline_day) +
+  geom_bar(fill = '#6A8D92') +
+  labs(title = "Campaigns by Deadline Day") +
+  xlab('Deadline Day of Week') +
+  ylab('Number of Campaigns')
+
+bar_by_deadline_on_weekday <- df %>%
+  ggplot() +
+  aes(x = deadline_on_weekday, fill = '#6A8D92') +
+  geom_bar(fill = '#6A8D92') +
+  labs(title = "Campaigns by Deadline Day") +
+  xlab('Deadline is on Weekday') +
+  ylab('Number of Campaigns')
+
+(bar_by_launch_weekday / bar_by_deadline_weekday) | (bar_by_deadline_on_weekday)
+
+```
+
+
+```{r by month then season, fig.height=4}
+bar_by_deadline_month <- df %>%
+  ggplot() +
+  aes(x = deadline_month) +
+  geom_bar(fill = '#6A8D92') +
+  labs(title = "Campaigns by Deadline Month") +
+  xlab('Deadline Month') +
+  ylab('Number of Campaigns')
+
+bar_by_deadline_season <- df %>%
+  ggplot() +
+  aes(x = deadline_season) +
+  geom_bar(fill = '#6A8D92') +
+  scale_x_discrete(limit = c('Spring', 'Summer', 'Fall', 'Winter')) +
+  labs(title = "Campaigns by Deadline Season") +
+  xlab('Deadline Day of Week') +
+  ylab('Number of Campaigns')
+
+(bar_by_deadline_month / bar_by_deadline_season)
+```
+
+
+While we could have applied the same consideration to the campaign launch date, we ultimately focused on the campaign deadline date because we wanted to limit the number of features, considering our sample size. We chose `deadline` over `launched_at` details because Kickstarter sends out reminder emails to users for bookmarked projects 48 hours and 8 hours before the deadline.^["What Does the 'Remind Me' Button Do?" _Kickstarter_, https://help.kickstarter.com/hc/en-us/articles/115005126574-What-does-the-Remind-Me-button-do-. ]
+
+
+**Staff pick**\
+Kickstarter staff can curate projects through `staff_pick` status.^["Introducing Badges for Projects We Love." _Kickstarter_, 2 Feb. 2016, https://www.kickstarter.com/blog/introducing-projects-we-love-badges. ] We consider the `staff_pick` variable noteworthy because it improves the campaign's visibility in a sea of thousands of active campaigns. Also, it likely reflects some qualitative aspects of the campaign, such as the worthiness of the cause, coolness factor, or creator trustworthiness, that we cannot capture in quantitative variables.
+
+**Campaign category**\
+While the category is technically something the creator has control over, in the sense that the creator decides what category their campaign falls under, it is usually not very flexible. For instance, a food truck does not make sense for the "technology" category. We consider this variable to be noteworthy because funding goals can vary greatly by category.
+
+\newpage
+```{r count by category}
+count_by_category <- df %>%
+  mutate(Category = clean_category) %>%
+  group_by(Category) %>%
+  summarize('Campaigns' = n()) %>%
+  arrange(desc(Campaigns))
+
+kable(
+  count_by_category,
+  digits = 0,
+  caption = 'Count of Campaigns by Primary Category',
+  booktabs = TRUE,
+)
+```
+
+```{r goal by category}
+df %>%
+  ggplot() +
+  aes(x = log10(goal)) +
+  geom_histogram(fill = '#80B192') +
+  labs(title = "Histogram of Log10(Goal)") +
+  xlab('Log10 of Goal in USD') +
+  ylab('Number of Campaigns') +
+  facet_wrap(~clean_category)
+```
+
+
+\newpage
+## Research Design
+
+Our research aims to understand the factors that increase a Kickstarter campaign's success, which we defined as the campaigner reaching their funding goal. We focus on the funding goal amount as our main dependent variable of interest, with the hypothesis that it is more difficult to crowdfund at higher orders of magnitude of funding goal. 
+
+We use large-sample linear models for our analysis, and as with all models, this option has limitations, which we detail in the Limitations section below. Our models include one outcome variable, which we defined as binary. 
+
+To enhance our research, we included variables that help explain project visibility and potential backer interest, such as when the campaign is running, how long it runs for, whether it is a staff pick, and what type of project it is. We chose to test these additional dependent variables because we believe that the funding goal amount chosen by the campaign creator is not comprehensive enough to explain campaign success.
+
+Before testing variable correlation and collinearity, we hypothesized the effect variables might have on the model.
+
+* Since Kickstarter's analysis of previously successful projects suggests that campaigns longer than 30 days struggle, we hypothesized that campaigns that run longer than 30 days would reach their funding goals less frequently than the shorter campaigns.
+* We hypothesized that campaigns that ended on weekdays would reach their funding goals more often than campaigns that ended on weekends. Additionally, we guessed campaigns in the fall months, September, October, and November, would reach their funding goals more often than campaigns in the other seasons.
+* We expect the ‘staff_pick' variable to greatly increase the likelihood of a campaign reaching its funding goal because staff picks have more visibility on the platform, and there are likely success factors that are unavailable to us that play a role in staff picks being chosen.
+
+It is important to note that since our outcome variable is binary, with only two levels, our residuals will not be normal if we have a large omitted variable bias, which we discuss in further detail in the Limitations section. We accept this limitation because we do not need normality for a large-sample linear model.
+
+
+
+# Model Building Process
+
+We use the funding goal amount in our analysis to help creators understand whether their minimum viable product is the right level of ambition to be a successful Kickstarter campaign. We also consider factors both in and out of creators' control that may help their campaigns succeed among the many active campaigns.
+
+Specifically, we decided to include campaign length, whether the deadline is on a weekday, what season the deadline is in, and staff pick in additional models. These explanatory variables are only moderately correlated (see the Limitations - Statistical section). 
+
+In particular, goal amount and campaign length are positively correlated because campaigners with larger goals tend to give themselves more time to hit those goals. When we included these variables in our models, we remembered that the inferred effect sizes of the goal amount and campaign length might be impacted by each other. We also considered the campaign category as a categorical variable by itself, and we made it interact with the log of goal amount to understand whether the effect size of a campaign's goal amount differed by category. Lastly, we subset the data by campaign category to assess whether the significance of our dependent variables changed by category.
+
+We will use robust standard errors throughout our models to follow best practice.
+
+
+\newpage
+## Model 1: Base Model
+
+In the first modeling iteration, we used only the primary explanatory variable of interest: funding goal amount in USD. Due to data skewness, as depicted in the exploratory data analysis section, we log-transformed the funding goal amount. Kickstarter's platform requires the funding goal amount to be at least \$1, so we were not concerned about negative values.
+
+$$
+success\_metric = \beta_0 + \beta_1\text{log}_{10}\text{goal}
+$$
+
+
+```{r model 1}
+model1 <- lm(success_metric ~ log10(goal), data=df_test)
+```
+
+
+
+## Model 2: Creator-Controlled Variables
+
+The second model included additional explanatory variables that a campaigner could reasonably control when launching their Kickstarter project.
+
+* `normalized_campaign_length`: the duration of the campaign on the platform (the number of days from campaign launched date to campaign end date).
+    * We noted that most campaigns had a campaign length of Kickstarter's default, 30 days. To better understand the effect of campaign length, we transformed this variable by subtracting 30 from campaign length, giving us negative values in what was previously a positive-value-only field. This allowed us to interpret a negative coefficient to indicate that shorter campaigns are more likely to succeed. In contrast, a positive coefficient would mean that longer campaigns are more likely to succeed.
+* `deadline_on_weekend` (categorical variable): shows if the deadline falls on a week or weekend (True, False). 
+    * Our causal theory suggests that whether the campaign ends on a weekday matters, but it does not consider the specific day of the week meaningful. Therefore, we created a binary variable indicating whether a campaign deadline was on a weekday.
+* `deadline_season` (categorical variable): the season of the year the campaign ends. 
+    * We also wanted to consider seasonality non-ordinal (e.g. fall comes before winter, but fall does not necessarily "rank above" winter for our interest). Based both on our causal theory and to reduce the number of features, we chose not to break campaign deadline into 12-month categories but rather into 4-month groupings to indicate season:
+        * Summer: June, July, August
+        * Fall: September, October, November
+        * Winter: December, January, February
+        * Spring: March, April, May
+
+$$
+\begin{aligned}
+  success\_metric & = \beta_0 + \beta_1\text{log}_{10}\text{goal} \\
+   & \quad + \beta_2\text{normalized\_campaign\_length} + \beta_3\text{deadline\_on\_weekday} \\
+   & \quad + \beta_4\text{deadline\_season(Spring)} + \beta_5\text{deadline\_season(Summer)} + \beta_6\text{deadline\_season(Winter)}
+\end{aligned}
+$$
+
+```{r model 2}
+model2 <- lm(success_metric ~ log10(goal) +
+               normalized_campaign_length +
+               deadline_on_weekday + factor(deadline_season),
+             data=df_test)
+```
+
+
+## Model 3: Non-Controllable Variables
+
+In the third model, we included everything from Model 2 and added variables the campaigner cannot control.
+
+* `staff_pick` (categorical variable): indicates whether the campaign was marked as a "Kickstarter staff pick" while the campaign was live; the campaign does not have to be successful to be featured as a staff pick
+* `clean_category`: transformed variable that only contains the main category of the campaign (e.g. music, art, food etc)
+
+$$
+\begin{aligned}
+  success\_metric & = \beta_0 + \beta_1\text{log}_{10}\text{goal} \\
+   & \quad + \beta_2\text{normalized\_campaign\_length} + \beta_3\text{deadline\_on\_weekday} \\
+   & \quad + \beta_4\text{deadline\_season(Spring)} + \beta_5\text{deadline\_season(Summer)} + \beta_6\text{deadline\_season(Winter)} \\
+   & \quad + \beta_7\text{clean\_category(comics)} + \beta_8\text{clean\_category(crafts)} + \beta_9\text{clean\_category(dance)} \\
+   & \quad + \beta_{10}\text{clean\_category(design)} + \beta_{11}\text{clean\_category(fashion)} + \beta_{12}\text{clean\_category(film)} \\
+   & \quad + \beta_{13}\text{clean\_category(food)} + \beta_{14}\text{clean\_category(games)} + \beta_{15}\text{clean\_category(journalism)} \\
+   & \quad + \beta_{16}\text{clean\_category(music)} + \beta_{17}\text{clean\_category(photography)} + \beta_{18}\text{clean\_category(publishing)} \\
+   & \quad + \beta_{19}\text{clean\_category(technology)} + \beta_{20}\text{clean\_category(theater)} + \beta_{21}\text{staff\_pick}
+\end{aligned}
+$$
+
+
+```{r model 3}
+model3 <- lm(success_metric ~ log10(goal) +
+               normalized_campaign_length +
+               deadline_on_weekday +
+               factor(deadline_season) +
+               factor(clean_category) +
+               staff_pick,
+             data=df_test)
+```
+
+
+## Model 4: Category and Goal Interactions
+
+In the fourth model, we wanted to further our investigation of how categories affect campaign success. In the third model, we observed the initial effect of categories; however, we did not observe how categories impacted the success rate as the project's goal increased.
+
+To accomplish this, we wanted to observe an interaction variable between `category` and `log10(goal)`. We believed that adding this to Model 3 would add too many degrees of freedom to get valid results, so we returned to Model 1 as a basis to define our model:
+
+$$
+\begin{aligned}
+  success\_metric & = \beta_0 + \beta_1\text{log}_{10}\text{goal} \\
+   & \quad + \beta_2\text{clean\_category(comics)} + \beta_3\text{clean\_category(comics):log}_{10}\text{goal} \\
+   & \quad + \beta_4\text{clean\_category(crafts)} + \beta_5\text{clean\_category(crafts):log}_{10}\text{goal} \\
+   & \quad + \beta_6\text{clean\_category(dance)} + \beta_7\text{clean\_category(dance):log}_{10}\text{goal} \\
+   & \quad + \beta_8\text{clean\_category(design)} + \beta_9\text{clean\_category(design):log}_{10}\text{goal} \\
+   & \quad + \beta_{10}\text{clean\_category(fashion)} + \beta_{11}\text{clean\_category(fashion):log}_{10}\text{goal} \\
+   & \quad + \beta_{12}\text{clean\_category(film)} + \beta_{13}\text{clean\_category(film):log}_{10}\text{goal} \\
+   & \quad + \beta_{14}\text{clean\_category(food)} + \beta_{15}\text{clean\_category(food):log}_{10}\text{goal} \\
+   & \quad + \beta_{16}\text{clean\_category(games)} + \beta_{17}\text{clean\_category(games):log}_{10}\text{goal} \\
+   & \quad + \beta_{18}\text{clean\_category(journalism)} + \beta_{19}\text{clean\_category(journalism):log}_{10}\text{goal} \\
+   & \quad + \beta_{20}\text{clean\_category(music)} + \beta_{21}\text{clean\_category(music):log}_{10}\text{goal} \\
+   & \quad + \beta_{22}\text{clean\_category(photography)} + \beta_{23}\text{clean\_category(photography):log}_{10}\text{goal} \\
+   & \quad + \beta_{24}\text{clean\_category(publishing)} + \beta_{25}\text{clean\_category(publishing):log}_{10}\text{goal} \\
+   & \quad + \beta_{26}\text{clean\_category(technology)} + \beta_{27}\text{clean\_category(technology):log}_{10}\text{goal} \\
+   & \quad + \beta_{28}\text{clean\_category(theater)} + \beta_{29}\text{clean\_category(theater):log}_{10}\text{goal}
+\end{aligned}
+$$
+
+
+```{r model 4}
+model4 <- lm(success_metric ~ factor(clean_category)*log10(goal),data=df_test)
+```
+
+
+
+
+\newpage
+# Results
+
+```{r se}
+se_robust <- function(x)
+  coeftest(x, vcov. = sandwich::sandwich)[, "Std. Error"]
+```
+
+```{r stargazer main table, results='asis', include=TRUE}
+mdls <- list(
+  model1,
+  model2,
+  model3
+)
+
+stargazer(mdls,
+          type = "latex",
+          font.size = 'small',
+          column.sep.width = "2pt",
+          single.row = TRUE,
+          header = FALSE,
+          out.header = FALSE,
+          title = 'Model Results',
+          se = lapply(mdls, se_robust),
+          dep.var.labels = c('Pledged Amount Reached or Exceeded Goal Before Deadline'),
+          covariate.labels = c('Log10 of Goal Amount in USD',
+                               'Normalized Campaign Length',
+                               'Deadline was on a Weekday',
+                               'Deadline was in Spring',
+                               'Deadline was in Summer',
+                               'Deadline was in Winter',
+                               'Comics Category',
+                               'Crafts Category',
+                               'Dance Category',
+                               'Design Category',
+                               'Fashion Category',
+                               'Film Category',
+                               'Food Category',
+                               'Game Category',
+                               'Journalism Category',
+                               'Music Category',
+                               'Photography Category',
+                               'Publishing Category',
+                               'Technology Category',
+                               'Theater Category',
+                               'Was Staff Pick')
+)
+```
+
+## Model 1
+
+```{r}
+model1_summary <- summary(model1)
+model1_r2 <- round(model1_summary$adj.r.squared,3)
+model1_coefs <- data.frame(model1_summary$coefficients)
+
+model1_intercept_coef <- model1_coefs[rownames(model1_coefs)=="(Intercept)",colnames(model1_coefs)=="Estimate"]
+model1_goal_coef <- model1_coefs[rownames(model1_coefs)=="log10(goal)",colnames(model1_coefs)=="Estimate"]
+model1_goal_se <- model1_coefs[rownames(model1_coefs)=="log10(goal)",colnames(model1_coefs)=="Std..Error"]
+model1_100_intercept <- model1_intercept_coef + 2*model1_goal_coef
+
+model1_goal_rounded_up_p_value <- ceiling(1000*model1_coefs[rownames(model1_coefs)=="log10(goal)",colnames(model1_coefs)=="Pr...t.."])/1000
+
+```
+
+In our base model, which does not include any covariates, the log-transformed funding goal amount variable was statistically significant, with a p-value < `r model1_goal_rounded_up_p_value`. We rejected the null hypothesis that the funding goal amount does not impact a Kickstarter campaign's success. Although we had a statistically significant p-value and rejected the null hypothesis, it was important to note that we had many observations. Thus, we considered additional statistics to explain our base model, like the coefficient of determination and the effect size. The log-transformed funding goal amount variable explained `r round(100*model1_r2,1)`% of the variance in whether a campaign was successful or failed (adj. $R^2$ = `r model1_r2`). Since we limited our dataset to campaigns with a goal of a minimum of \$100, when we plugged the lowest value into our model, it said that campaigns with a goal of \$100 have ~ `r round(100*model1_100_intercept)`% chance of success. Furthermore, for every increase in the order of magnitude (e.g. $\text{log}_{10}$(\$1000)), the chance of success decreases by `r round(100*model1_goal_coef,1)`+/-`r round(100*model1_goal_se,1)`%.
+
+## Model 2
+
+```{r}
+model2_summary <- summary(model2)
+model2_r2 <- round(model2_summary$adj.r.squared,3)
+model2_coefs <- data.frame(model2_summary$coefficients)
+
+model2_weekday_coef <- model2_coefs[rownames(model2_coefs)=="deadline_on_weekdayTRUE",colnames(model2_coefs)=="Estimate"]
+model2_winter_coef <- model2_coefs[rownames(model2_coefs)=="factor(deadline_season)Winter",colnames(model2_coefs)=="Estimate"]
+model2_length_coef <- model2_coefs[rownames(model2_coefs)=="normalized_campaign_length",colnames(model2_coefs)=="Estimate"]
+
+model2_weekday_se <- model2_coefs[rownames(model2_coefs)=="deadline_on_weekdayTRUE",colnames(model2_coefs)=="Std..Error"]
+model2_winter_se <- model2_coefs[rownames(model2_coefs)=="factor(deadline_season)Winter",colnames(model2_coefs)=="Std..Error"]
+model2_length_se <- model2_coefs[rownames(model2_coefs)=="normalized_campaign_length",colnames(model2_coefs)=="Std..Error"]
+
+model2_weekday_rounded_up_p_value <- ceiling(1000*model2_coefs[rownames(model2_coefs)=="deadline_on_weekdayTRUE",colnames(model2_coefs)=="Pr...t.."])/1000
+model2_winter_rounded_up_p_value <- ceiling(1000*model2_coefs[rownames(model2_coefs)=="factor(deadline_season)Winter",colnames(model2_coefs)=="Pr...t.."])/1000
+model2_length_rounded_up_p_value <- ceiling(1000*model2_coefs[rownames(model2_coefs)=="normalized_campaign_length",colnames(model2_coefs)=="Pr...t.."])/1000
+
+```
+
+Model 2 included multiple categorical independent variables, `deadline_on_weekday` and `deadline_season` variables, and an independent metric variable, `normalized_campaign_length`. For the `deadline_on_weekday` variable, `False` was the baseline, and the model showed that if the campaign ends on a weekday, there is a `r round(100*model2_weekday_coef,1)`+/-`r round(100*model2_weekday_se,1)`% chance of the campaign successfully reaching its goal. This negative effect was proven statistically significant with a p-value < `r model2_weekday_rounded_up_p_value`. In terms of the `deadline_season` variable, `fall` (September through November) was the reference, and the model returned a statistically significant negative coefficient for both `spring` and `winter`, exhibiting there is a `r round(100*model2_winter_coef,1)`+/-`r round(100*model2_winter_se,1)`% chance of a campaign reaching its funding goal. The coefficient to explain how `summer` impacts a campaign's success is not statistically significant. Lastly, the normalized campaign length coefficient was statistically significant and showed that the chance of campaign success goes down by `r round(100*model2_length_coef,1)`% for each day past thirty days. Overall, Model 2 explains `r round(100*model2_r2,1)`% of the variance in our dependent variable, which is almost double Model 1's $R^2$ value.
+
+
+### Model 2 Category Subsets
+
+
+```{r category model setup}
+categories <- c('games', 'design', 'comics', 'publishing', 'art',
+                'technology', 'food', 'film', 'music', 'fashion')
+
+mod_games <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'games'))
+
+mod_design <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'design'))
+
+mod_comics <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'comics'))
+
+mod_publishing <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'publishing'))
+
+mod_art <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'art'))
+
+mod_technology <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'technology'))
+
+mod_food <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'food'))
+
+mod_film <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'film'))
+
+mod_music <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'music'))
+
+mod_fashion <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(clean_category == 'fashion'))
+
+mod_other <- lm(success_metric ~ log10(goal) + normalized_campaign_length +
+              deadline_on_weekday + factor(deadline_season),
+            data=df_test %>%
+  filter(!clean_category %in% categories))
+
+```
+
+
+```{r stargazer category tables, results='asis', include=TRUE}
+
+category_mdls <- list(
+  mod_art,
+  mod_comics,
+  mod_design
+)
+
+stargazer(category_mdls,
+          type = "latex",
+          font.size = 'small',
+          column.sep.width = "2pt",
+          single.row = TRUE,
+          header = FALSE,
+          out.header = FALSE,
+          title = 'Model 2 Results by Category: Set 1',
+          se = lapply(category_mdls, se_robust),
+          column.labels = c('art', 'comics', 'design'),
+          covariate.labels = c('Log10 of Goal Amount in USD',
+                               'Normalized Campaign Length',
+                               'Deadline was on a Weekday',
+                               'Deadline was in Spring',
+                               'Deadline was in Summer',
+                               'Deadline was in Winter')
+)
+          
+category_mdls <- list(
+  mod_fashion,
+  mod_film,
+  mod_food
+)
+
+stargazer(category_mdls,
+          type = "latex",
+          font.size = 'small',
+          column.sep.width = "2pt",
+          single.row = TRUE,
+          header = FALSE,
+          out.header = FALSE,
+          title = 'Model 2 Results by Category: Set 2',
+          se = lapply(category_mdls, se_robust),
+          column.labels = c('fashion', 'film', 'food'),
+          covariate.labels = c('Log10 of Goal Amount in USD',
+                               'Normalized Campaign Length',
+                               'Deadline was on a Weekday',
+                               'Deadline was in Spring',
+                               'Deadline was in Summer',
+                               'Deadline was in Winter')
+)
+          
+          
+category_mdls <- list(
+  mod_games,
+  mod_music,
+  mod_publishing
+)
+
+stargazer(category_mdls,
+          type = "latex",
+          font.size = 'small',
+          column.sep.width = "2pt",
+          single.row = TRUE,
+          header = FALSE,
+          out.header = FALSE,
+          title = 'Model 2 Results by Category: Set 3',
+          se = lapply(category_mdls, se_robust),
+          column.labels = c('games', 'music', 'publishing'),
+          covariate.labels = c('Log10 of Goal Amount in USD',
+                               'Normalized Campaign Length',
+                               'Deadline was on a Weekday',
+                               'Deadline was in Spring',
+                               'Deadline was in Summer',
+                               'Deadline was in Winter')
+)
+
+
+category_mdls <- list(
+  mod_technology,
+  mod_other
+)
+
+stargazer(category_mdls,
+          type = "latex",
+          font.size = 'small',
+          column.sep.width = "2pt",
+          single.row = TRUE,
+          header = FALSE,
+          out.header = FALSE,
+          title = 'Model 2 Results by Category: Set 4',
+          se = lapply(category_mdls, se_robust),
+          column.labels = c('technology', 'other categories'),
+          covariate.labels = c('Log10 of Goal Amount in USD',
+                               'Normalized Campaign Length',
+                               'Deadline was on a Weekday',
+                               'Deadline was in Spring',
+                               'Deadline was in Summer',
+                               'Deadline was in Winter')
+)
+
+```
+
+In addition to testing `category` as a variable, we tested Model 2 for each category. By doing this, we were able to determine if the various factors we analyzed for impact on campaign success differ between categories. Our analysis revealed a few noteworthy differences.
+First, the log-transformed `goal` variable was statistically significant for every category. Second, the `normalized_campaign_length` was statistically significant for every category, and for every day past thirty days the campaign ran, its chance of successfully reaching its funding goal declined by around 1%. The deadline seasonality and deadline day of the week classification demonstrated varying effects across categories, with some being statistically significant and others not.
+
+
+\newpage
+
+## Model 3
+
+```{r}
+model3_summary <- summary(model3)
+model3_r2 <- round(model3_summary$adj.r.squared,3)
+model3_coefs <- data.frame(model3_summary$coefficients)
+
+model3_staff_pick_coef <- model3_coefs[rownames(model3_coefs)=="staff_picktrue",colnames(model3_coefs)=="Estimate"]
+model3_weekday_coef <- model3_coefs[rownames(model3_coefs)=="deadline_on_weekdayTRUE",colnames(model3_coefs)=="Estimate"]
+model3_spring_coef <- model3_coefs[rownames(model3_coefs)=="factor(deadline_season)Spring",colnames(model3_coefs)=="Estimate"]
+model3_winter_coef <- model3_coefs[rownames(model3_coefs)=="factor(deadline_season)Winter",colnames(model3_coefs)=="Estimate"]
+model3_length_coef <- model3_coefs[rownames(model3_coefs)=="normalized_campaign_length",colnames(model3_coefs)=="Estimate"]
+
+model3_crafts_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)crafts",colnames(model3_coefs)=="Estimate"]
+model3_film_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)film",colnames(model3_coefs)=="Estimate"]
+model3_food_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)food",colnames(model3_coefs)=="Estimate"]
+model3_journalism_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)journalism",colnames(model3_coefs)=="Estimate"]
+model3_technology_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)technology",colnames(model3_coefs)=="Estimate"]
+model3_theater_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)theater",colnames(model3_coefs)=="Estimate"]
+
+model3_comics_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)comics",colnames(model3_coefs)=="Estimate"]
+model3_design_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)design",colnames(model3_coefs)=="Estimate"]
+model3_games_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)games",colnames(model3_coefs)=="Estimate"]
+model3_photography_coef <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)photography",colnames(model3_coefs)=="Estimate"]
+
+model3_staff_pick_se <- model3_coefs[rownames(model3_coefs)=="staff_picktrue",colnames(model3_coefs)=="Std..Error"]
+model3_weekday_se <- model3_coefs[rownames(model3_coefs)=="deadline_on_weekdayTRUE",colnames(model3_coefs)=="Std..Error"]
+model3_spring_se <- model3_coefs[rownames(model3_coefs)=="factor(deadline_season)Spring",colnames(model3_coefs)=="Std..Error"]
+model3_winter_se <- model3_coefs[rownames(model3_coefs)=="factor(deadline_season)Winter",colnames(model3_coefs)=="Std..Error"]
+
+model3_crafts_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)crafts",colnames(model3_coefs)=="Std..Error"]
+model3_film_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)film",colnames(model3_coefs)=="Std..Error"]
+model3_food_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)food",colnames(model3_coefs)=="Std..Error"]
+model3_journalism_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)journalism",colnames(model3_coefs)=="Std..Error"]
+model3_technology_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)technology",colnames(model3_coefs)=="Std..Error"]
+model3_theater_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)theater",colnames(model3_coefs)=="Std..Error"]
+
+model3_comics_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)comics",colnames(model3_coefs)=="Std..Error"]
+model3_design_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)design",colnames(model3_coefs)=="Std..Error"]
+model3_games_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)games",colnames(model3_coefs)=="Std..Error"]
+model3_photography_se <- model3_coefs[rownames(model3_coefs)=="factor(clean_category)photography",colnames(model3_coefs)=="Std..Error"]
+
+model3_staff_pick_rounded_up_p_value <- ceiling(1000*model3_coefs[rownames(model3_coefs)=="staff_picktrue",colnames(model3_coefs)=="Pr...t.."])/1000
+model3_weekday_rounded_up_p_value <- ceiling(1000*model3_coefs[rownames(model3_coefs)=="deadline_on_weekdayTRUE",colnames(model3_coefs)=="Pr...t.."])/1000
+model3_spring_rounded_up_p_value <- ceiling(1000*model3_coefs[rownames(model3_coefs)=="factor(deadline_season)Spring",colnames(model3_coefs)=="Pr...t.."])/1000
+model3_winter_rounded_up_p_value <- ceiling(1000*model3_coefs[rownames(model3_coefs)=="factor(deadline_season)Winter",colnames(model3_coefs)=="Pr...t.."])/1000
+
+```
+
+Model 3 included all the variables in Model 2 with the addition of two categorical variables that are out of a creator's control, `category` and `staff_pick`. The inclusion of these variables increased the $R^2$ value to `r round(100*model3_r2,1)`%. For the ‘staff_pick’ variable, the default was `False`, and the model showed that if a campaign was marked as a staff pick its chance for success increased by 25%. The model did not show much change in the log-transformed `goal` coefficient from Model 2, and it was still statistically significant. There was a slight change in the `deadline_on_weekday` effect from `r round(100*model2_weekday_coef,1)`+/-`r round(100*model2_weekday_se,1)`% to `r round(100*model3_weekday_coef,1)`+/-`r round(100*model3_weekday_se,1)`%. The `deadline_season` variables' impacts changed slightly from a campaign with a `spring` deadline being `r round(100*model3_spring_coef,1)`+/-`r round(100*model3_spring_se,1)`% less likely to reach its funding goal, compared to `fall`, and `winter` decreasing the chance of success by `r round(100*model3_winter_coef,1)`+/-`r round(100*model3_winter_se,1)`%. The `normalized_campaign_length` variable's negative impact on campaign success decreased because it went from  `r round(100*model2_length_coef,1)`% less likely to reach the funding goal to  `r round(100*model3_length_coef,1)`% less likely.
+
+* Categories that lower success chance (significantly), compared to art:
+    * crafts (`r round(100*model3_crafts_coef,1)`+/-`r round(100*model3_crafts_se,1)`%)
+    * film (`r round(100*model3_film_coef,1)`+/-`r round(100*model3_film_se,1)`%)
+    * food (`r round(100*model3_food_coef,1)`+/-`r round(100*model3_food_se,1)`%)
+    * journalism (`r round(100*model3_journalism_coef,1)`+/-`r round(100*model3_journalism_se,1)`%)
+    * technology (`r round(100*model3_technology_coef,1)`+/-`r round(100*model3_technology_se,1)`%)
+    * theater (`r round(100*model3_theater_coef,1)`+/-`r round(100*model3_theater_se,1)`%)
+* Categories that increase success chance (significantly), compared to art:
+    * comics (`r round(100*model3_comics_coef,1)`+/-`r round(100*model3_comics_se,1)`%)
+    * design (`r round(100*model3_design_coef,1)`+/-`r round(100*model3_design_se,1)`%)
+    * games (`r round(100*model3_games_coef,1)`+/-`r round(100*model3_games_se,1)`%)
+    * photography (`r round(100*model3_photography_coef,1)`+/-`r round(100*model3_photography_se,1)`%)
+* Categories with no (significant) impact on success chance, compared to art:
+    * dance
+    * fashion
+    * music
+    * publishing
+    * theater (has only one * of significance)
+
+The five categories that did not present statistical significance in Model 3 compared to `art` make sense because they all fall into a kind of "arts" category themselves. Therefore, we would not expect to find any statistically significant difference when comparing `art` to "arts".
+
+
+## Model 4
+
+```{r}
+m4_coefs <- data.frame(model4$coefficients)
+m4_coefs <- cbind(coef_name = rownames(m4_coefs), m4_coefs)
+rownames(m4_coefs) <- 1:nrow(m4_coefs)
+colnames(m4_coefs)[2] <- "coef_value"
+
+art_intercept_0 <- filter(m4_coefs,coef_name=='(Intercept)')[,2]
+art_slope <- filter(m4_coefs,coef_name=='log10(goal)')[,2]
+art_intercept_100 <- art_intercept_0 + 2*art_slope
+
+#tbl_model4 <- data.frame(
+#  Category = c("Comics", "Crafts", "Design", "Fashion", "Games",
+#                 "Music", "Publishing", "Technology", "Theater"),
+#  delta_v_art_base = c('-20%', 'N/S', '-20%', '+32%', '-23%', '-38%', '-20%',
+#                       'N/S', 'N/S'),
+#  delta_v_art_oom = c('+10%', '-15%', '+11%', '-10%', '+11%', '+10%', '+8%',
+#                      '-9%', '-9%'),
+#  effective_base = c('96%', '66%', '98%', '108%', '95%', '78%', '92%', 'N/S',
+#                     'N/S'),
+#  effective_oom = c('-7%', '-32%', '-6%', '-27%', '-6%', '-7%', '-9%', '-26%',
+#                    '-26%')
+#)
+
+m4_coefs <- m4_coefs %>% filter(coef_name != '(Intercept)' & coef_name != 'log10(goal)')
+
+m4_se <- data.frame(summary(model4)$coefficients[,4]  ) #data.frame(lapply(list(model4), se_robust))
+m4_se <- cbind(coef_name = rownames(m4_se), m4_se)
+rownames(m4_se) <- 1:nrow(m4_se)
+colnames(m4_se)[2] <- "coef_p"
+
+m4_coefs <- sqldf('SELECT c.coef_name,c.coef_value,e.coef_p FROM m4_coefs c JOIN m4_se e ON c.coef_name = e.coef_name')
+m4_coefs <- sqldf('SELECT substr(i.coef_name,23) AS category,i.coef_value AS intercept_0_coef_delta,i.coef_p AS intercept_p, s.coef_value AS slope_coef_delta, s.coef_p AS slope_p FROM m4_coefs i JOIN m4_coefs s ON (i.coef_name||\':log10(goal)\')=s.coef_name')
+
+m4_coefs <- m4_coefs %>% mutate(intercept_0_coef_delta = replace(intercept_0_coef_delta, intercept_p>=0.1, NA),slope_coef_delta = replace(slope_coef_delta, slope_p>=0.1, NA))
+m4_no_changes <- m4_coefs %>% filter(is.na(intercept_0_coef_delta) & is.na(slope_coef_delta))
+m4_unchanged_cat_str <- paste(m4_no_changes[,1],collapse=', ')
+
+m4_coefs <- m4_coefs %>% filter(is.na(intercept_0_coef_delta)==FALSE | is.na(slope_coef_delta)==FALSE)
+
+tbl_model4 <- m4_coefs %>% mutate (
+
+  slope_coef_effective = slope_coef_delta + art_slope,
+  intercept_0_coef_effective = intercept_0_coef_delta + art_intercept_0
+ 
+) %>% mutate(
+  intercept_100_coef_effective=coalesce(intercept_0_coef_effective,art_intercept_0)+2*coalesce(slope_coef_effective,art_slope)
+) %>% mutate(
+  intercept_100_coef_delta=intercept_100_coef_effective-art_intercept_100
+) %>% mutate(
+  intercept_0_coef_delta=case_when(is.na(intercept_0_coef_delta)==FALSE ~ paste(round(100*intercept_0_coef_delta),'%',sep='')),
+  intercept_100_coef_delta=case_when(is.na(intercept_100_coef_delta)==FALSE ~ paste(round(100*intercept_100_coef_delta),'%',case_when(
+    is.na(intercept_0_coef_delta) &  is.na(slope_coef_effective) ~ '†§',
+    is.na(intercept_0_coef_delta) ~ '†',
+    is.na(slope_coef_effective) ~ '§',
+    TRUE ~ ''
+  ),sep='')),
+  slope_coef_delta=case_when(is.na(slope_coef_delta)==FALSE ~ paste(round(100*slope_coef_delta),'%',sep=''),TRUE ~ 'N/S'),
+  intercept_100_coef_effective=case_when(is.na(intercept_100_coef_effective)==FALSE ~ paste(round(100*intercept_100_coef_effective),'%',case_when(
+    is.na(intercept_0_coef_delta) &  is.na(slope_coef_effective) ~ '†§',
+    is.na(intercept_0_coef_delta) ~ '†',
+    is.na(slope_coef_effective) ~ '§',
+    TRUE ~ ''
+  ),sep='')),
+  slope_coef_effective=case_when(is.na(slope_coef_effective)==FALSE ~ paste(round(100*slope_coef_effective),'%',sep=''),TRUE ~ 'N/S')
+) %>% select (
+  category,
+  intercept_100_coef_delta,
+  slope_coef_delta,
+  intercept_100_coef_effective,
+  slope_coef_effective
+)
+
+comic_intercept_100_pct_str <- filter(tbl_model4,category=='comics')[,c('intercept_100_coef_effective')]
+comic_slope_pct_str <- filter(tbl_model4,category=='comics')[,c('slope_coef_effective')]
+```
+
+Model 4 includes interaction terms between the log-transformed `goal` and category variables. We wanted to test whether the effect of the log-transformed `goal` on success differs among categories.
+
+Art, our default category, has an intercept of `r round(art_intercept_0,2)`, at goal=0, with an adjusted intercept of `r round(art_intercept_100,2)`, at goal=\$100, and a slope of `r round(art_slope,2)`. This means that there is ~`r round(100*art_intercept_100)`% probability that a \$100 project is successful for art and that the projected success rate decreases by `r round(100*art_slope)`% per order of magnitude of the target goal.
+
+The chart below shows the relative change in these coefficients for other categories and the resulting takeaways. For example, a Comics campaign for \$100 has an expected `r comic_intercept_100_pct_str` chance of success, and the projected success rate decreases by `r comic_slope_pct_str` per order of magnitude (O.O.M.) of the target goal.
+
+```{r table for model 4 analysis}
+
+
+kbl(tbl_model4, "latex", align="c", booktabs = T, 
+    label='Model 4 Analysis',
+    col.names = c('Category', "Delta Base % @$100",  "Delta %/O.O.M.", "Effective Base % @$100", "Effective %/O.O.M.")
+    ) %>%
+  kable_styling(latex_options = "HOLD_position") %>%
+#  add_header_above(c("Category" = 1, "Base % @$100" = 1, "$\\\\Delta$ %/O.O.M." = 1,
+#                     "Base % @$100" = 1, "$\\\\Delta$ %/O.O.M." = 1), escape=FALSE) %>%
+  add_header_above(c(" " = 1, "Delta v. Art" = 2, "Effective" = 2)) %>%
+  footnote(general = c(
+    "N/S = Not Significant", 
+    "† = Delta intercept @$0 N/S, recalculated using Art Intercept @$0 with significant delta %/O.O.M.",
+    "† = Delta slope N/S, recalculated using Art %/O.O.M. with significant delta intercept @$0",
+    paste("(",m4_unchanged_cat_str," had no significant changes)",sep='')
+    )
+  )
+
+
+
+
+
+
+
+
+
+
+```
+
+
+```{r stargazer model 4, results='asis', include=TRUE}
+# Model 4 SG chart
+stargazer(model4,
+          type = "latex",
+          font.size = 'small',
+          column.sep.width = "2pt",
+          single.row = TRUE,
+          header = FALSE,
+          out.header = FALSE,
+          title = 'Model 4 Results',
+          se = lapply(list(model4), se_robust)
+          #,
+          #column.labels = c('technology', 'other categories'),
+          #covariate.labels = c('Log10 of Goal Amount in USD',
+          #                     'Normalized Campaign Length',
+          #                     'Deadline was on a Weekday',
+          #                     'Deadline was in Spring',
+          ##                     'Deadline was in Summer',
+          #                     'Deadline was in Winter'
+          #)
+          
+)
+```
+
+\newpage
+# Limitations
+
+## Statistical
+
+```{r}
+our_success_distribution <- df %>% 
+  group_by(success_metric) %>%
+  summarize(rate=n()/nrow(df)) %>%
+  mutate(
+    source='Our Data',
+    result=case_when(
+      success_metric==1 ~ 'Successful',
+      TRUE ~ 'Failed'
+    )
+  ) %>%
+  select(-success_metric)
+
+# for knitting
+our_success_rate = our_success_distribution[our_success_distribution$result=='Successful','rate']
+statista_success_rate = 0.3937
+statista_success_distribution <- data.frame(
+  rate=c(1-statista_success_rate,statista_success_rate),
+  source = c('Statista','Statista'),
+  result = c('Failed','Successful'))
+```
+
+**Assumption 1: Independent and identically distributed (I.I.D.) samples**\
+Due to the timeline of this research project and technical problems with DataHub, we did not fully resolve all the issues present in our dataset, which has implications for assuming the sample is I.I.D. An example of one of these issues is that the web crawler pages through the history of projects for each category; however, Kickstarter only provides a finite number of pages to traverse. 
+
+We observed projects launched back in 2014 in the latest 3/2022 dataset, yet successful projects launched in 2021 were found in earlier datasets (e.g., the 9/2021 dataset included projects that were not in the 3/2022 dataset). Therefore, we can safely confirm that projects are not pushed off of Kickstarter's categorial pagination through chronology only. Kickstarter's algorithms used to determine whether projects appear in history are a blackbox and almost certainly violate I.I.D. requirements in the strictest sense. It is improbable that the projects that make it into pagination are through random selection. Sampling additional datasets not used in our final dataset, e.g. 10/2021, confirms that there are still post-pandemic projects that are not captured in any of our four chosen datasets. 
+
+A solution to minimize the number of missing projects and allow us to better converge on I.I.D. would be to sample the web crawler results more frequently than every six months. A preliminary discovery found, for example, that sampling every three months instead of every six months would have yielded 10% more post-pandemic projects. However, due to R's poor memory management and DataHub's low maximum memory allocation, our efforts to get data every six months reached diminishing returns. This prevented us from loading additional datasets without DataHub's Virtual Machine crashing. With proper resources and time, we could have scanned every monthly dataset published; however, it is worth noting that even this would almost certainly not have acquired all projects.
+
+Some external findings confirm this. Statista compiled a report that only ~`r round(100*statista_success_rate)`% of Kickstarter campaigns are successful^["Kickstarter: Project Funding Success Rate 2021." _Statista_, 13 Dec. 2021, https://www.statista.com/statistics/235405/kickstarter-project-funding-success-rate/.], compared to `r round(100*our_success_rate)`% of our data's campaigns.
+
+
+```{r success comparison, fig.height=2.5}
+
+rbind(
+  our_success_distribution,
+  statista_success_distribution
+) %>%
+ggplot() +
+  aes(x=source,y=rate,fill=result) +
+  geom_bar(stat='identity') +
+  labs(title = "Successful Campaign Rate by Source") +
+  xlab('Campaign Result') +
+  ylab('Percent of Campaigns') +
+  scale_y_continuous(
+    labels=label_percent(big.mark=',')
+  ) +
+  theme(
+    legend.position="bottom",
+    legend.title=element_blank()
+  ) +
+  scale_fill_manual(values = state_colors) +
+  coord_flip()
+
+```
+
+
+When deduplicating projects with multiple categories, we pick the category of the first occurrence seen in the CSVs for a given dataset. For proper I.I.D., we should be picking one of the categories randomly, especially given that categories are likely crawled in the same order each time. By selecting the first one seen, specific categories are likely overrepresented. Unfortunately, because of DataHub's limited resources, we had to perform deduplication on each chunk of data as we loaded it. We would have preferred loading all duplicates and then performing deduplication randomly on the full dataset.
+
+
+**Assumption 2: A unique best linear predictor (BLP) exists**\
+A unique BLP exists so long as the variables in our models are not perfectly collinear.
+
+The correlation coefficients in the correlation matrix below show no perfect collinearity between our chosen metric variables, `log(goal)`, `normalized_campaign_length`, `deadline_on_weekday`, and `staff_pick`. We used R's `factor()` function for our categorical variables, `deadline_season` and `clean_category`, which automatically drops one factor for each variable to prevent perfect collinearity.
+
+
+```{r correlation matrix, fig.height=3}
+
+corr <- df %>%
+  mutate(log_goal = log(goal),
+         staff_pick = case_when(staff_pick == 'true' ~ 1,
+                                staff_pick == 'false' ~ 0)) %>%
+  select(deadline_on_weekday,
+         log_goal,
+         normalized_campaign_length,
+         staff_pick
+         ) %>%
+  cor()
+
+ggcorrplot(round(corr, 1),
+           hc.order = TRUE,
+           type = "upper",
+           lab = TRUE,
+           lab_size = 4,
+           tl.cex = 10,
+           colors = state_colors)
+?ggcorrplot
+```
+
+
+**Assumption 3: Conditional Linear Expectation**\
+The goals of our sample projects were mainly clustered between \$1,000 and \$50,000. Due to this, the model is disproportionately fitted to projects within this range, causing accuracy degradation for lower and extremely high goals. The graph below shows that campaign success is severely overpredicted for large-goal campaigns on the left side (which already have the lowest predicted success rate). In the rightmost octile, you can see a sudden rigid linear downward overprediction that represents where the model predicts over 100% success for low-goal campaigns, which we know to be impossible.
+
+
+```{r conditional linear expectation, fig.height = 3}
+
+#Limitations - Conditional Linear Expectation
+rsqq <- df_test %>% mutate(
+  model_predictions = predict(model1),
+  model_residuals = resid(model1)
+)
+
+rsqq %>%
+  ggplot() +
+  aes(x = model_predictions, y = model_residuals) +
+  geom_point(size=0.1) +
+  stat_smooth()
+
+```
+
+
+## Structural
+
+The success of creative endeavors depends greatly on qualitative factors, luck, and factors localized to the particular type of endeavor. Thus, we recognize that the causal theory applied here is greatly simplified. Below is a slightly less simplified causal diagram to highlight some omitted variables.
+
+![](omitted_variables.png)
+
+**Intentionally omitted variables**\
+We intentionally chose to omit the following variables:
+
+* location 
+* state
+* name
+* blurb
+
+Despite limiting our dataset to campaigns located only in the United States, the ‘location' variable contained many unique categorical variables. Given our sample size, we could not effectively model with all unique locations included. Due to time and hardware constraints, we chose to forego a cluster analysis to reduce the number of variables.
+
+Kickstarter campaign names and blurbs are unique to each campaign and frequently contain non-ASCII characters, such as emojis and other characters outside of the English alphabet. Therefore, due to time and constraints, we chose to refrain from conducting string analyses of the name or campaign blurb.
+
+**Unintentionally omitted variables**\
+There are several omitted variables we would have liked to include in our model if the data were available. These are listed below and followed by their possible implications.
+
+* momentum
+* advertising
+* creator experience
+* campaign refinement
+
+*Momentum*\
+Campaign "momentum" generally describes how much early support a project receives, such as the number of backers or money pledged in the first 48 hours of a campaign's launch. This has two effects: 1) it increases the chances of "bandwagoning", with the idea that someone else has already determined that this project is something worth backing, and 2) it contributes to visibility, as Kickstarter has a page for "trending" or "popular" projects. We expect momentum to be positively correlated with success. In contrast, we think momentum would be negatively correlated with the funding goal amount. Hence, the omitted variable campaign momentum has an unknown effect on the coefficients.
+
+*Advertising*\
+In recent years, Kickstarter campaign creators have started advertising through social media ads on sites such as Instagram and YouTube. We expect this to be positively correlated with success since project visibility is increased. We would also anticipate the funding goal amount to increase because the creator might include advertising costs in their campaign budget. This causes the "true" coefficient value of the funding goal amount to be higher than our fitted coefficient value. Since the coefficient in front of the funding goal amount is negative, this omitted variable bias is towards zero.
+
+*Creator Experience*\
+Since Kickstarter has been crowdfunding projects for over a decade, some creators have had time to come back and run multiple campaigns. Running previous campaigns gives creators access to previous backers' emails, which can act as a base of support for new campaigns. Furthermore, their experience might allow them to create more polished campaigns (see next section). We expect creator history to be positively correlated with campaign success. Assuming that smaller goal amounts reflect projects that take less effort, we expect creator history to be negatively correlated with the funding goal amount. The more projects a creator has launched in the past, the more likely their campaigns are smaller-scale campaigns. This causes the "true" coefficient value of the funding goal amount to be lower than our fitted coefficient value, meaning that this omitted variable bias is away from zero.
+
+*Measures of Campaign Refinement*\
+Under the assumption that people want to crowdfund projects they believe will succeed while also understanding what they are paying for, a campaign with detailed information is more likely to attract backers than a poorly worded, poorly visualized campaign. The length of a campaign's description and the number of images included could be considered measurements of the level of details provided. Furthermore, it has become increasingly popular for creators to include "stretch goals" in their campaign descriptions. The stretch goals are often shared in illustration form and entice backers to pledge additional money for additional rewards. With all this in mind, we would expect the inclusion of the description's character length and/or the number of images to be positively correlated with a campaign's success. It is not easy to say how an increased level of detail in a campaign would impact the funding goal amount; therefore, we need to test this variable before knowing its effect on the coefficients. 
+
+
+
+# Conclusion
+
+## Overall Conclusion -- TODO
+
+## Further Study
+
+We hope that our study results will help inspire Kickstarter creators in bringing their campaigns to life. While our models have relatively low $R^2$ values, we expected this to be the case. We would be disappointed if we found that metadata details and aspects out of creators' control, such as `staff_pick`, more strongly determined whether a project was successful than the unique aspects of each campaign. With that in mind, we still hope this guides creators regarding those metadata details that are only incidental to their core project but may help get them to the 100% pledged mark to reach success.
+
+Besides qualitative, unique details, we also highlighted some omitted variables, such as advertising money and minimum reward tier, that we believe quantitative and highly important but not available in our existing dataset. These omitted variables could form the basis for future research.
+
+In the interest of reproducibility, we recommend re-running this study with more samples. Due to hardware limitations, we could not include all of the data that we wanted to.
+
+
+\newpage
+
+# Appendix
+
+## Kickstarter Data Dictionary
+
+* `backers_count`: integer value of the total backers that this campaign had at the time of data pull
+* `blurb`: varchar of the subtitle of the campaign
+* `category`: JSON blob with values such as category ID, category name, and parent category of the campaign (e.g. music, specifically pop music)
+* `converted_pledged_amount`: integer value of amount pledged to the campaign at the time of data pull, converted from whatever currency the funding goal is in to the currency_currency
+* `country`: two letter ISO code for the country that the campaign was launched in
+* `country_displayable_name`: varchar name of the country that the campaign was launched in
+* `created_at`: when the campaign was first created in Kickstarter (think of this as entering "draft" inside of Kickstarter)
+    * In the original dataset, this is in epoch time in seconds
+    * We transform this to be POSIXct type, in format YYYY-MM-DD HH:MM:SS
+* `creator`: JSON blob identifying who created the campaign with values such as creator ID, creator name, and the image link for the creator's profile picture
+* `currency`: three letter currency code identifying the currency that the funding goal for this campaign is in
+* `currency_symbol`: symbol for the currency, such as $ for USD
+* `currency_trailing_code`: boolean value for whether the currency has a trailing code
+* `current_currency`: the default currency for the account that is looking at the campaign; in this case, the webcrawler always defaults to USD
+* `deadline`: the deadline for the campaign in Kickstarter, at which point no more pledges will be accepted. If the funding goal is reached by this deadline, then funds are taken from backers and released to the creator, and the campaign is marked as successful. If the funding goal is not reached by this deadline, no funds are taken from backers, and the campaign is marked as a failure.
+    * In the original dataset, this is in epoch time in seconds
+    * We transform this to be POSIXct type, in format YYYY-MM-DD HH:MM:SS
+* `disable_communication`: boolean value for whether the campaign has disabled communications
+* `friends`: whether or not the user currently looking at the campaign is friends (e.g. through social media account linking) with the campaign creator
+* `fx_rate`: a float value specifying the foreign exchange rate at time of data pull between the original campaign goal currency and current_currency
+* `goal`: an integer value specifying the goal amount for this campaign, automatically converted from the original goal amount in its original currency to an amount displayed in current_currency
+* `id`: the unique identifier for this Kickstarter campaign
+* `is_backing`: boolean value for whether the account that is looking at the campaign is a campaign backer at the time of data pull; in this case, the webcrawler always defaults to null or false
+* `is_starrable`: boolean value for whether or not this campaign can be starred by users at the time of data pull; false for inactive campaigns
+* `is_starred`: boolean value for whether the account that is looking at the campaign has starred this campaign or not at the time of data pull; in this case, the webcrawler always defaults to null or false
+* `launched_at`: the time at which the Kickstarter campaign launched, as in was open for backers to begin making pledges
+    * In the original dataset, this is in epoch time in seconds
+    * We transform this to be POSIXct type, in format YYYY-MM-DD HH:MM:SS
+* `location`: JSON blob identifying the location of the campaign, as selected by the creator and as displayed on the campaign page, with values such as country, state, and localized name of the location
+* `name`: varchar value that is the name/title of the campaign
+* `permissions`: multiple users can be added as creators of a campaign; this indicates what permissions the account that is looking at the campaign has; in this case, the webcrawler always has the same value
+* `photo`: JSON blob containing IDs of and links to various versions of the primary photo (or video thumbnail) of the Kickstarter campaign
+* `pledged`: total amount pledged to the campaign at time of data pull, in the original currency of the funding goal
+* `profile`: JSON blob with details about the campaign's profile including visual settings
+* `slug`: name of the campaign with hyphens instead of spaces, appended after the "kickstarter.com" hostname to resolve to this campaign's page
+* `source_url`: where the web crawler found the campaign from; in this case, based on how the web crawler works, this is always the campaign category
+* `spotlight`: boolean value that indicates whether the campaign made use of the "spotlight" feature, available only to successful campaigns, which essentially preserves the campaign's journey and allows creators to communicate with backers easily in one webpage
+* `staff_pick`: boolean value that indicates whether the campaign was marked as a "Kickstarter staff pick" while the campaign was live; the campaign does not have to be successful to be featured as a staff pick
+* `state`: campaign state at the time of data pull; options are successful or failed, as detailed previously, as well as canceled, meaning that the campaign creator canceled the campaign before the campaign deadline, or "active" for campaigns whose deadlines have not been reached and are not canceled as of time of data pull
+* `state_changed_at`: when the campaign status was changed; this is the same as the deadline for successful and failed campaigns
+    * In the original dataset, this is in epoch time in seconds
+    * We transform this to be POSIXct type, in format YYYY-MM-DD HH:MM:SS
+* `static_usd_rate`: the fixed conversion rate between the original campaign goal currency and USD for the first transaction
+* `urls`: JSON blob containing URL links to various pieces of the campaign
+* `usd_exchange_rate`: the exchange rate between the original campaign goal currency and USD at the time the funds were disbursed
+* `usd_pledged`: pledged amount converted to USD, using the static_usd_rate, and therefore the actual USD value of the amount pledged that was disbursed
+* `usd_type`: either "domestic" or "international"; it is unclear what this value means
+
+
+
+
+
+
