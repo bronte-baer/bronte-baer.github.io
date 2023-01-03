@@ -1,0 +1,697 @@
+---
+title: 'Final Project w241: Meditation impact on Navy student''s anxiety levels'
+author: "Bronte Baer, Luis Delgado, Heather Rancic, Irene Shaffer"
+date: "August 8, 2022"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r load packages, include = FALSE, message = FALSE}
+
+library(data.table)
+library(ggplot2)
+library(ggfortify)
+library(magrittr)
+library(lmtest)
+library(sandwich)
+library(knitr)
+library(dplyr)
+library(stargazer)
+library(ggpubr)
+library("cowplot")
+library(gridExtra)
+library(corrplot)
+library("PerformanceAnalytics")
+library(car)
+
+```
+
+
+
+```{r global options, include = FALSE}
+knitr::opts_chunk$set(include = FALSE, message = FALSE, warning = FALSE )
+
+knitr::knit_engines$set(problem_description = function(options) {
+  code <- paste(options$code, collapse = "\n")
+})
+#Register an inline hook:
+library(knitr)
+#Round all to 3 decimal places
+inline_hook <- function (x) {
+  if (is.numeric(x)) {
+    res <- ifelse(x == round(x),
+      sprintf("%d", x),
+      sprintf("%.2f", x)
+    )
+    paste(res, collapse = ", ")
+  }
+}
+
+knit_hooks$set(inline = inline_hook)
+```
+
+
+```{r ROTC data, include = FALSE}
+d_rotc <- fread("data/CORTRAMID_2022.csv")
+
+#add a gad7score feature that supports logarithmic models
+d_rotc <- d_rotc %>% mutate(gad7score_log = log(gad7score + 1))
+```
+
+```{r USNA data, include = FALSE}
+d <- fread("data/PROTRAMID_2022.csv")
+
+#add a gad7score feature that supports logarithmic models
+d <- d %>% mutate(gad7score_log = log(gad7score + 1))
+```
+
+```{r Combined data, include = FALSE}
+d_combined <- fread("data/COMBINED_2022.csv")
+
+#add a gad7score feature that supports logarithmic models
+d_combined <- d_combined %>% mutate(gad7score_log = log(gad7score + 1))
+```
+
+\tableofcontents
+
+\newpage
+
+## Research Question
+
+_Does a one-hour transcendental meditation class reduce anxiety for Reserve Officers' Training Corps (ROTC) scholarship and United States Naval Academy students over the course of 5 days?_
+
+## Abstract
+
+Naval officers come from the United States Naval Academy (USNA) and from the Reserve Officers’ Training Corps (ROTC). Both groups of students receive the same credentials to be Naval officers in a variety of roles when they graduate college. USNA students experience a rigorous and highly regimented existence in their university setting with a slow process of receiving personal freedoms back through a merit system. ROTC students experience a fairly normal college experience with very limited military training. These young students become the backbone of leadership throughout the entirety of the U.S. Navy. The purpose of this study was to first explore the stress levels these students experience in their daily lives as measured by the psychiatric industry standard Generalized Anxiety Disorder (GAD-7) test for both ROTC and USNA students. With this information, the study further explored the short term efficacy of Transcendental Meditation(TM) classes on the stress levels of the students. We found a statistically significant impact of TM classes on the stress levels of students. There is evidence that the impact of TM classes on USNA students, though statistically significant, is less than that of ROTC students. Though the difference in the effects between both populations of students is not itself statistically significant, the results still lead to a recommendation to explore whether the USNA institutionalized method of education creates a population of students more resistant to the positive effects of TM training in a future study.
+
+## Introduction & background
+
+Every year Reserve Officers' Training Corps (ROTC) students graduate with full scholarships paid for by the U.S. Navy.   In exchange for these scholarships, these students serve as Naval Officers in a variety of roles all with one theme in common, leadership.  These students are charged with leading the Navy's enlisted forces.  Similarly, the United States Naval Academy (USNA) also trains the future leaders within the Navy.  Although both of these groups of students ultimately execute the exact same roles within the force, their education experience varies greatly.  ROTC students experience the closest thing to a typical university life.  They are fully integrated with their civilian student population.  The only differences include regular drug testing and one day of military classes a week.  On the USNA side, the students experience a highly regimented existence.  For the majority of their education, they are only permitted to wear military uniforms.  Dating is highly restricted and all of their extra curricular activities are monitored.  
+
+Suicide rates continue to plague the Department of Defense (DoD).^[Department of Defense Annual Suicide Report:  https://www.defense.gov/News/Releases/Release/Article/2793835/department-of-defense-releases-calendar-year-2020-annual-suicide-report/]  Recent events onboard the U.S. Navy aircraft carrier, USS George Washington have highlighted possible issues with resilience training, mental health awareness, and the effects of the unique operational environments sailors live under.^[USS George Washington Deaths:  https://www.businessinsider.com/3-us-navy-sailors-uss-george-washington-found-dead-2022-4?utm_source=copy-link&utm_medium=referral&utm_content=topbar]  The future leaders of these sailors need the highest levels of training and character development in order to provide the support needed by these young and malleable sailors.  For both the ROTC and USNA students, their first exposure to a less structured and regimented military level of training is their summer after freshman year.  During this summer, they are exposed to the career fields from which they can choose.  During their one week of exposure to Naval Aviation which is one of those possible fields, they are integrated with naval aviators.  This week of training has the highest propensity for flexibility in modules.  This led to a randomized field experiment where two major things are measured, the students' levels of stress as measured by the Generalized Anxiety Disorder (GAD-7) test and the effect of a Transcendental Meditation class at the beginning of the week on their stress as measured at the end of the week.^[Generalized Anxiety Disorder (GAD-7) item anxiety scale:  https://www.uofmhealth.org/sites/default/files/healthwise/media/pdf/hw/form_abn2339.pdf]  The study began with the TM treatment on ROTC students over a period of 3 weeks.  As the experimental process was fine tuned, those lessons learned were utilized to run the experiment with USNA students for another 4 weeks.  
+
+It is important to note, our collection of demographic data was hampered by the careful balance of insight with privacy.  Both populations of students, ROTC and USNA, have a very small minority of women, people of color, and members of the LGBTQIA\+ community.  Most students are STEM majors.  Any attempt to use gender or majors for collection endanger the students' ability to remain anonymous.  GAD-7 questions can reveal quite a bit regarding the stress and anxiety students experience and as thus, protecting anonymity becomes absolutely critical in providing accurate results.  
+
+At this point it is important to note one other critical fact.  Our study starts with a basic investigation into the effect of meditation on student stress with ROTC subjects.  As we fine tuned our experiment and data collection we transitioned to USNA students.  For these students we were able to add covariates of interest therefore enhancing our findings.  Despite this, there were very interesting findings regarding the differences between ROTC and USNA students that will result in future studies.  
+
+\newpage
+
+## Experiment & Hypothesis
+
+Our null hypothesis at the heart of our models is:  
+
+_A one hour transcendental meditation class has no effect on anxiety and stress reduction over the course of a week on college students in a military scholarship program._     
+
+### Enrollment & Recruiting Process 
+
+We executed the study in two stages. The first stage was three weeks long and involved 80-90 ROTC students per week with a total of `r nrow(d_rotc)` subjects.  This stage only measured the effect of meditation on anxiety.  The second stage was with 70-80 USNA students per week over four weeks for a total of `r nrow(d)` subjects.  This second stage also measured the effect of meditation on anxiety but additionally measured a series of covariates.  
+
+### Measurement Metrics
+
+The General Anxiety Disorder (GAD-7) test asks the following 7 questions:  
+
+Over the past week, how often have you experienced:  
+1. Nervousness or anxiety  
+2. A persistent sense of worry  
+3. An unusually high level of worry  
+4. Difficulty relaxing   
+5. Restlessness, making it difficult to even sit still   
+6. Feeling easily annoyed or irritable   
+7. Feeling a deep sense of fear  
+
+Each question allows the participant to answer between 0 times and 3 times.  This cumulative score ranges in value from 0 to a max score of 21.  A score of 0 shows very little evidence of anxiety.  A score of 21 would show a very high level of anxiety.  This range gives us the ability to measure our values using a logarithmic scale and thus be able to measure percentage of change.  This will be discussed more thoroughly below.  
+
+### Experimental Design & Randomization
+
+Each set of weekly students arrived for training and went through a short indoctrination module.  During this indoctrination module, the students were split evenly into 10 groups.  Each student announced sequential numbers from 1 to 10.  The number defined the group the students would belong to.  Since students that know each other tend to sit together, using sequential numbers to split the students up maximized the random assignment to each group.  Once the students were split into 10 groups, each group flipped a coin to determine whether they would be part of the treatment or control group.  !["Flow Diagram"](flow_diagram.png)
+
+
+Once the groups were identified, both the treatment and control subjects traveled to a location where the proctor was waiting for them.  The members assigned to control were told to wait 100 meters away from the treatment group.  The TM instructor explained the following to the treatment subjects:  
+
+1.  They are part of an experiment regarding the effects of meditation.  
+2.  They have the option to opt out of the experiment and not attend the meditation class.  
+3.  After the treatment is done, they will be released to a self guided tour of the surrounding neighborhood.  
+
+
+For the entirety of the experiment, none of the students chose to opt out of the experiment.  After the instructor spoke to the treatment group, he then released the control group to execute a predetermined tour of the surrounding neighborhood.  The treatment group would start the tour an hour after the control group had begun the tour.  At that point the control group would be heading to their vans to depart the tour.  This minimized the chance for conversation between the control and treatment group.  From this point on, treatment subjects had a non overlapping schedule with control students and would not meet again until the last day of training when the survey was administered. !["Experiment Design"](experiment_design.png)
+
+
+### Power calculation 
+
+After executing an exhaustive power analysis using the collected data from the ROTC portion of the study and having an average treatment effect and a specified level of variance, we were able to explore a change in $\alpha$.^[W241 Power Analysis:  https://drive.google.com/file/d/1qIKsnk3VJ7lkTtMNT8iQ2N3lZ6qDcJfz/view?usp=sharing]  We also explored less than optimal average treatment effects in preparation for that to happen as well as the addition of covariates.  Maintaining $\alpha$ at 0.05, we concluded a N size for 80% power of 194 subjects.  Thankfully we procured `r nrow(d_rotc)` ROTC students and  `r nrow(d)` USNA subjects.  
+
+### Covariates 
+
+We faced two challenges while determining which covariates to examine in our models. The first challenge was the survey logistics. Ideally, we would have had the subjects fill out the survey before treatment to give us baseline measurements for each subject and collect the covariate information we were considering pre-treatment. However, this was not possible because it was crucial to preserve the anonymity of the students. For baseline data, we would have needed an ID for each student to match their pretreatment survey responses to their post-treatment responses. The Navy did not accept this level of identification, nor did we want the students to think there was any way we could trace their survey responses back to them. Preserving the trust and confidentiality of the students was our top priority and essential because we wanted the self-reported responses to be honest and the students to feel secure. The second challenge we faced was regarding the sensitivity of the questions asked in the survey. Not only did the questions need to maintain student anonymity, but they also needed to be ethically aligned with not collecting sensitive information from the students. 
+
+To solve these challenges, we settled on collecting all information, including covariates, post-treatment. While this is not ideal, we carefully considered choosing variables that the treatment would not impact. We are confident the answers for the post-treatment covariates we chose would have been the same if we measured them pre-treatment. Below is a list of the covariates we examined in our model.  
+
+`meditation_practice`: Do you regularly practice meditation?  
+
+  Yes  
+  No  
+
+`religion`: Religious affiliation:  
+
+  Religious / Spiritual  
+  Agnostic  
+  Atheist  
+
+`parents`: Did either of your parents serve in the military?  
+
+  Yes  
+  No  
+
+`dog`: Did you grow up in a household with dogs?  
+
+  Yes  
+  No  
+
+`income`: What is your family’s income?  
+
+  Less than \$40,000  
+  \$40,000-\$100,000  
+  \$100,000-\$200,000  
+  Over \$200,000  
+
+`region’: What region of the country are you from?  
+
+  West (including Hawaii)  
+  Midwest  
+  Southwest  
+  Southeast  
+  Northeast  
+  Northwest (including Alaska)  
+  International  
+
+
+It is important to note that we did not include covariates in our pilot experiment with the ROTC students. We introduced covariates into the surveys during our second stage of the experiment with Naval Academy students.  
+
+### Ethical and Privacy Considerations (including impact on covariates)  
+
+The previously described covariates allow further insight into our sample population without allowing us to narrow down the identity of a subject.  We will see the distributions of these variables in a section below.  Beyond the importance of anonymity, we also implemented controls to allow the ability to opt into the study and allow the data to be utilized by our team.    
+Once the ability to opt out of the study is complete, the students have one more option.  During the survey, the students have the option not to allow our team to use the data collected for the study.  This option and the survey were explained to all the students before they filled them out.  The subjects provided us with a 98.8\% consent rate for ROTC students and a 98.3\% consent rate for USNA students.  
+
+### Survey Collection Method 
+
+We used "Google forms" for our survey collection. Our initial ROTC survey^[ROTC Students Survey:  https://forms.gle/ip6LpZ4BMwtpA1zk8] allowed us to refine our question set into a better finished product with our USNA survey^[USNA Students Survey:  https://forms.gle/xCZ8vUPaYQjFjDxy8].  
+
+\newpage 
+
+## Data Analysis 
+
+### Exploratory Data Analysis 
+
+We can see that the data is not really skewed.  Note, meditation participation is binary, 0 for control, 1 for treatment.  The correlation between GAD-7 and meditation participation is -.015.  Which is important because as GAD-7 score goes down, meditation score goes up. This leads us to further analyze with regression to see if meditation is a good predictor of GAD-7 score.
+
+```{r Correlation matrix, echo=FALSE, include = TRUE, fig.height=4, fig.width=4}
+chart.Correlation(d_combined[,c( "gad7score", "meditation_participation")], histogram=TRUE, pch=19, size=5)
+```
+
+USNA GAD-7 distributions by category.  These histograms give us the breakdown of specific GAD-7 question and the overall GAD-7 score distribution.  
+
+
+``` {r map some stuff, echo=FALSE, include = TRUE}
+par(mfrow=c(3,4))
+hist(d_combined$nervous_metric, main="nervous")
+hist(d_combined$worry_metric, main="worry")
+hist(d_combined$high_worry_metric, main="high worry")
+hist(d_combined$norelax_metric, main="norelax")
+hist(d_combined$restless_metric, main="restless")
+hist(d_combined$irritable_metric, main="irritable")
+hist(d_combined$fear_metric, main="fear")
+hist(d_combined$gad7score, main="gad7score")
+```
+ROTC / USNA overall GAD-7 Distributions  
+
+The impact of GAD-7 scores is smaller with USNA students as compared to the ROTC students.  
+ 
+```{r box and scatterplot, warning=FALSE, echo=FALSE, include = TRUE, fig.height=3, fig.width=3}
+income <- d$income
+gadscore <- d$gad7score
+region <- d$region
+school <- d$school
+
+meditation_participation <- d$meditation_participation
+
+usna_participation_gad <- ggboxplot(data = d, x = 'meditation_participation', y = 'gadscore',
+  color = "meditation_participation", palette = "jco", binwidth = 1, legend = "none",
+  sort.val = "asc",           # Sort the value in ascending order
+  x.text.angle = 0) +          # Rotate vertically x axis texts +
+  labs(
+ # title = 'GAD 7 scores by Meditation Participation',
+  x = 'Meditation Participation',
+  y = 'USNA GAD-7 Score')
+
+usna_participation_gad
+
+gadscore <- d_rotc$gad7score
+
+meditation_participation <- d_rotc$meditation_participation
+
+rotc_participation_gad <- ggboxplot(data = d_rotc, x = 'meditation_participation', y = 'gadscore',
+  color = "meditation_participation", palette = "jco", binwidth = 1, legend = "none",
+  sort.val = "asc",           # Sort the value in ascending order
+  x.text.angle = 0) +          # Rotate vertically x axis texts +
+  labs(
+ # title = 'GAD 7 scores by Meditation Participation',
+  x = 'Meditation Participation',
+  y = 'ROTC GAD-7 Score')
+
+rotc_participation_gad
+
+```
+
+```{r group plots, WARNING = FALSE, echo=FALSE, include = TRUE}
+
+#grid.arrange(
+#  rotc_participation_gad, usna_participation_gad,    
+#  nrow = 1,
+#  top = "USNA GAD-7 Scores by Study Participation and School")
+
+#ggarrange(rotc_participation_gad, usna_participation_gad, nrow = 1) #, align = "v", widths = 5, height = 12)
+
+```
+
+```{r difference in means between ROTC and USNA, warning=FALSE}
+diff_means_pval <- coef(summary(d_combined[, lm(gad7score ~ school)]))[2,4]
+```
+We can further see a slightly higher mean GAD-7 Score, though not statistically significant with a difference in means p-value of `r diff_means_pval`, between USNA students and ROTC students.
+
+```{r graphic difference in means between ROTC and USNA, WARNING = FALSE, echo=FALSE, include = TRUE, fig.height=3, fig.width=3}
+school_mean <- d_combined[, .(gad_score_mean = mean(gad7score)), keyby = .(school)]
+
+school_plot <- ggbarplot(school_mean, x = "school", y = "gad_score_mean",
+               color = "school", palette = "Magma", fill = "lightblue") +
+  labs(
+  x = 'School',
+  y = 'Mean GAD-7 Score')
+
+#grid.arrange(
+#   participation_gad, school_plot, 
+#   nrow = 1,
+#   top = "USNA GAD-7 Scores by Study Participation and School")
+school_plot
+```
+
+
+USNA covariate distributions - we plotted some of the interesting covariate distributions during our data analysis.  We found the relatively even distribution across the United States to be interesting as well as the disproportionate distribution of religious view across the students.
+
+``` {r dotplot stress levels by region and religion, warning=FALSE, echo=FALSE, message=FALSE, include=TRUE, fig.height=4, fig.width=3}
+income <- d$income
+gadscore <- d$gad7score
+region <- d$region
+school <- d$school
+
+income <- d$income
+gadscore <- d$gad7score
+region <- d$region
+school <- d$school
+
+
+# level_order <- c('Less than $40,000', '$40,000 to $100,000', '$100,000 to $200,000', 'Over $200,000', 'Over $200,000') 
+# 
+# income_gad <- ggdotplot(data = d, x = 'income',  y = 'gadscore',
+#   color = "income", palette = "jco", binwidth = .5, legend = "none",
+#   sort.val = "asc",           # Sort the value in ascending order
+#   x.text.angle = 60) +          # Rotate vertically x axis texts +
+#   labs(
+#   title = 'GAD 7 scores by Income',
+#   x = 'Income',
+#   y = 'Gad 7 Score') +
+#   scale_x_discrete(limits = level_order)
+# 
+# income_gad
+
+
+region_gad <- ggboxplot(data = d, x = 'region', y = 'gadscore',
+  color = "region", palette = "jco", binwidth = 1, legend = "none",
+  sort.val = "asc",           # Sort the value in ascending order
+  x.text.angle = 90) +          # Rotate vertically x axis texts +
+  labs(
+ # title = 'GAD 7 scores by Meditation Participation',
+  x = 'Region',
+  y = 'ROTC GAD-7 Score')
+
+region_gad
+
+
+
+religion_box_gad <- ggboxplot(data = d, x = 'religion', y = 'gadscore',
+  color = "religion", palette = "jco", binwidth = 1, legend = "none",
+  sort.val = "asc",           # Sort the value in ascending order
+  x.text.angle = 90) +          # Rotate vertically x axis texts +
+  labs(
+ # title = 'GAD 7 scores by Meditation Participation',
+  x = 'Religion',
+  y = 'ROTC GAD-7 Score')
+
+religion_box_gad
+
+
+#grid.arrange(
+#   income_gad, region_gad, dogs_gad,
+#   nrow = 1,
+#   top = "Gad 7 Scores by Study Participation and School")
+```
+
+\newpage
+
+## Limitations and Considerations  
+
+### Omitted Variable Bias  
+
+We explored omitted variable bias (OVB) by determining the theoretical impact of the following variables on both the baseline dependent and independent variables.
+
+1. Trust in the proctor:  Is it possible that a high level of affinity is built with regards to the relationship the subjects have with the proctor?  If so, there would be no real effect on the stress levels the student is feeling.  It would have an effect on meditation participation effect, but the stress levels would remain unchanged regardless of how much trust is placed on the meditation teacher.  The OVB would could be considered minimal but away from 0.  But we also recognize the importance of trust in the proctor to believe the data collected to be truly anonymous.  Furthermore, this level of trust is critical to having the subjects provide true and honest responses to fairly sensitive questions regarding mental health.
+
+2. Effect of being on the tail end of training and knowing you have to go back to the "grind":  As you reach closer to the end of training, and the reality that school is right around the corner again could increase the stress and thus the GAD-7 score.  But it would have little to no effect on the impact of meditation.  Therefor the OVB would be considered minimal but away from 0.  When we break out the meditation effects week by week, we might be able to see the effect of this in a below section.  
+
+3. Location of meditation class.  The class is held by the ocean on a rocky seaside cliff.  This has the propensity to lower stress levels while making meditation more appealing.  The effect would be temporary, only during the length of the class.  As the week progresses, the setting of the class will have little effect on the overall anxiety or stress levels of the subject therefore having little OVB by the time the survey is taken.  It could however have a positive effect on the quality of the meditation and as such, have a small effect away from 0.
+
+
+### Non Compliance Considerations 
+
+Our experiment ran the risk of one-sided non compliance.  We were not concerned there would be Defiers because the students in the control group would have no way of receiving the treatment, the meditation class.  This is because the students are on a strict schedule each day, and it was not possible for someone from the control group to “sneak” into the treatment group.  We could have had Non-compliers that were students in the treatment group who did not actively participate in the meditation class or practice meditation daily during the week.  The first possibility was controlled because Luis ensured all the students who were in the class participated.  The second scenario was harder to control, and we had to trust the subjects to “take their treatment”.
+
+All students in the treatment group were given the option to not participate in the meditation class; however, no one chose to forego the treatment.  If we did experience non-compliance, we would have adjusted our model to analyze the intent-to-treat (ITT) and the Complier Average Causal Effect (CACE).
+
+### Attrition Considerations
+
+```{r attrition consideration, include=FALSE}
+
+# Find consent numbers
+consent_count <- d %>%
+  count(consent, sort = TRUE) 
+
+consent_med_count <- d %>%
+  count(consent, meditation_participation, sort = TRUE)
+
+```
+
+Students were allowed to opt-out of the survey, meaning their survey responses would not be used in our study.  For these students, we remove them from our final data set.  Since students do not leave the week of training, and everyone is required to fill out the survey, choosing that your results not be used in the experiment was the closest we came to attrition.  With this, less than 2% of subjects (`r consent_count[2, n]` students) did not provide consent for their survey results to be used.  To determine if there was a significant difference in the consent numbers for the treatment and control group proportions, we ran a T-test.  
+
+```{r difference between consent and non consent groups, include=TRUE}
+
+# Run proportions difference test to ensure
+# difference in group sizes aren't significant
+proportions_difference_test <- d[ , lm(meditation_participation ~ consent)]
+  
+coeftest(proportions_difference_test, vcovHC)
+
+```
+
+In our data set, we do not have NAs for `meditation_participation` or `consent`; however, to ensure that our experiment did not have a significant difference in the number of subjects in the control group who did not consent (`r consent_med_count[4, n]`) and the number of subjects in the treatment group who did not consent (`r consent_med_count[3, n]`), we ran a T-test.  We failed to reject the null hypothesis that the difference in group numbers was significant, so we continued with our analysis feeling confident in the randomization of our treatment and control groups.  
+
+Since the number of students who attrited was so small, and the difference in group proportions was not statistically significant, we did not feel it was necessary to complete an extreme value bounds analysis.  Furthermore, excluding the  `r consent_count[2, n]` students from our data set still left us with more subjects than our power analysis suggested we needed, so we did not want to make assumptions with our data when we did not have to (such as calculating and using extreme value bounds).  
+
+### Spillover Considerations  
+
+In our experiment, there might be spillover.  Spillover could happen if a treatment group student conversed with a control group student and discussed the meditation class.  The treatment group student could have shared the skills and techniques they learned in the class, and the control group student could practice these methods, thereby altering their stress levels by the end of the week. This could cause a bias in our estimated treatment effect.  We would expect spillover to cause us to underestimate the treatment effect because a student in the control group learned new skills to lower their anxiety levels; however, there is also the chance that this could go the other way.  We cannot rule out the possibility that the student in the control group could try meditating and end up feeling frustrated or more stressed because they did not have formal meditation training.  This could then lead to an overestimation of the treatment effect.  
+
+\newpage
+
+## Statistical Modeling & Results  
+
+```{r base model ROTC and logarithmic transformation, warning = FALSE}
+
+model_rotc_base <- d_rotc[ , lm(gad7score ~ meditation_participation)] 
+model_rotc_base_robust_err <-coeftest(model_rotc_base, vcovHC)[ , "Std. Error"] #robust
+
+model_rotc_base_log <- d_rotc[ , lm(gad7score_log ~ meditation_participation)] 
+model_rotc_base_log_robust_err <-coeftest(model_rotc_base_log, vcovHC)[ , "Std. Error"] #robust
+```
+
+### ROTC base model construction
+
+```{r ROTC base model & log model, warning = FALSE}
+#isolate only data provided with consent
+d_rotc <- d_rotc[consent=="Yes"]
+
+model_rotc_base <- d_rotc[ , lm(gad7score ~ meditation_participation)] 
+
+model_rotc_base_log <- d_rotc[ , lm(gad7score_log ~ meditation_participation)] 
+```
+
+The base model for ROTC students is:  
+$$gad\_7\_score = \beta_0 +\beta_1meditation\_participation +\epsilon$$
+With ROTC students, this results in homoskedastic errors but non-normally distributed residuals.  Homoskedasticity is shown in the Scale-Location plot with its horizontal blue line.  The Q-Q plot shows residuals disbursed well outside of the dashed line, hence non-normally distributed residuals.  The result of the Breusch-Pagan test also shows that the null hypothesis of homoskedasticity is not rejected:
+
+```{r ROTC base model plot, echo=FALSE, include = TRUE, warning=FALSE}
+ggplot2::autoplot(model_rotc_base)
+bptest(model_rotc_base)
+```
+
+By adding a logarithmic transformation to the dependent variable we end up with the following model which provides normally distributed residuals.  We will continue with this model.  We also continue ahead with the more conservative robust standard errors in all calculations since we have no way of knowing if every future case of data collection will have homoskedastic errors.  
+
+$$log(gad\_7\_score) = \beta_0 +\beta_1meditation\_participation +\epsilon$$
+
+```{r ROTC base model log plot, echo=FALSE, include = TRUE, warning=FALSE}
+ggplot2::autoplot(model_rotc_base_log)
+```
+
+```{r ROTC log model, warning = FALSE}
+model_rotc_base <- d_rotc[ , lm(gad7score_log ~ meditation_participation)] 
+model_rotc_base_robust_err <-coeftest(model_rotc_base, vcovHC)[ , "Std. Error"] 
+
+rotc_percentage_effect <- ((exp(abs(coef(summary(model_rotc_base))[2,1])))-1)*100
+rotc_pvalue_effect <- coef(summary(model_rotc_base))[2,4]
+```
+
+The stargazer output of the logarithmic transformation on the gad7score dependent variable is:  
+
+```{r ROTC log model stargazer, echo=FALSE, include = TRUE, warning=FALSE}
+stargazer(model_rotc_base,
+          align = TRUE,
+          type = "text",
+          single.row = TRUE,
+          se = list(model_rotc_base_robust_err)
+          )
+```
+It is important to note, in order to glean the percentage change in anxiety with only a dependent variable undergoing a log transformation one must calculate it as follows:  $e^{(\beta_1)}-1*100$
+
+The result of the base model is a statistically significant reduction in anxiety from meditation of `r rotc_percentage_effect`\% and a p-value of `r rotc_pvalue_effect`.  
+\newpage 
+
+### ROTC Week to Week Analysis
+```{r ROTC Week to Week analysis, warning = FALSE}
+rotc_week2 <- d_rotc[week == 'week2' , lm(gad7score_log ~ meditation_participation)] 
+rotc_week2_err <- coeftest(rotc_week2, vcovHC)[ , "Std. Error"] #robust
+
+rotc_week3 <- d_rotc[week == 'week3' , lm(gad7score_log ~ meditation_participation)] 
+rotc_week3_err <- coeftest(rotc_week3, vcovHC)[ , "Std. Error"] #robust
+
+rotc_week4 <- d_rotc[week == 'week4' , lm(gad7score_log ~ meditation_participation)] 
+rotc_week4_err <- coeftest(rotc_week4, vcovHC)[ , "Std. Error"] #robust
+```
+
+For our ROTC students we ran the experiment over 3 weeks.  We can see in the week to week results how meditation consistently has a negative effect on stress with varying degrees of statistical significance.  The last week the students are in San Diego, having the greatest level of significance.
+
+```{r ROTC week to week stargazer, echo=FALSE, include = TRUE, warning=FALSE}
+stargazer(rotc_week2,
+          rotc_week3,
+          rotc_week4,
+          align = TRUE,
+          type = "text",
+          single.row = TRUE,
+          se = list(rotc_week2_err,
+                    rotc_week3_err,
+                    rotc_week4_err)
+          )
+```
+
+### USNA base model construction
+
+```{r USNA base model & log model, warning = FALSE}
+#isolate only data provided with consent
+d <- d[consent=="Yes"]
+
+model_base <- d[ , lm(gad7score ~ meditation_participation)] 
+
+model_base_log <- d_rotc[ , lm(gad7score_log ~ meditation_participation)] 
+```
+
+The base model for both USNA students is:  
+$$gad\_7\_score = \beta_0 +\beta_1meditation\_participation +\epsilon$$
+With USNA students, this results in homoskedastic errors but non-normally distributed residuals.  Homoskedasticity is shown in the Scale-Location plot with its horizontal blue line.  The Q-Q plot shows residuals disbursed well outside of the dashed line, hence non-normally distributed residuals.  The result of the Breusch-Pagan test also shows that the null hypothesis of homoskedasticity is not rejected:
+
+```{r USNA base model plot, echo=FALSE, include = TRUE, warning=FALSE}
+ggplot2::autoplot(model_base)
+bptest(model_base)
+```
+
+Once again, we add a logarithmic transformation to the dependent variable to end up with the following model which provides normally distributed residuals.  We will continue with this model.  We also continue ahead with the more conservative robust standard errors in all calculations since we have no way of knowing if every future case of data collection will have homoskedastic errors.  
+
+$$log(gad\_7\_score) = \beta_0 +\beta_1meditation\_participation +\epsilon$$
+
+```{r USNA base model log plot, echo=FALSE, include = TRUE, warning=FALSE}
+ggplot2::autoplot(model_base_log)
+```
+
+```{r USNA log model, warning = FALSE}
+model_base <- d[ , lm(gad7score_log ~ meditation_participation)] 
+model_base_robust_err <-coeftest(model_base, vcovHC)[ , "Std. Error"] 
+
+usna_percentage_effect <- ((exp(abs(coef(summary(model_base))[2,1])))-1)*100
+usna_pvalue_effect <- coef(summary(model_base))[2,4]
+```
+
+The stargazer output of the logarithmic transformation on the gad7score dependent variable is:  
+
+```{r USNA log model stargazer, echo=FALSE, include = TRUE, warning=FALSE}
+stargazer(model_base,
+          align = TRUE,
+          type = "text",
+          single.row = TRUE,
+          se = list(model_base_robust_err)
+          )
+```
+It is important to note, in order to gleam the percentage change in anxiety with only a dependent variable undergoing a log transformation one must calculate it as follows:  $e^{(\beta_1)}-1*100$
+
+The result of the base model is a statistically significant reduction in anxiety from meditation of `r usna_percentage_effect`\% and a p-value of `r usna_pvalue_effect`.  
+
+### USNA Week to Week Analysis
+```{r USNA Week to Week analysis, warning = FALSE}
+usna_week1 <- d[week == 'week1' , lm(gad7score_log ~ meditation_participation)] 
+usna_week1_err <- coeftest(usna_week1, vcovHC)[ , "Std. Error"] #robust
+
+usna_week2 <- d[week == 'week2' , lm(gad7score_log ~ meditation_participation)] 
+usna_week2_err <- coeftest(usna_week2, vcovHC)[ , "Std. Error"] #robust
+
+usna_week3 <- d[week == 'week3' , lm(gad7score_log ~ meditation_participation)] 
+usna_week3_err <- coeftest(usna_week3, vcovHC)[ , "Std. Error"] #robust
+
+usna_week4 <- d[week == 'week4' , lm(gad7score_log ~ meditation_participation)] 
+usna_week4_err <- coeftest(usna_week4, vcovHC)[ , "Std. Error"] #robust
+```
+
+For our USNA students we ran the experiment over 4 weeks.  We can see in the week to week results how meditation has sporadic effects on anxiety in weeks 2 and 3.  We also note that none of the weeks are by themselves statistically significant.  It is only when the 4 weeks of data are aggregated that we see significant results.  
+
+```{r USNA week to week stargazer, echo=FALSE, include = TRUE, warning=FALSE}
+stargazer(usna_week1,
+          usna_week2,
+          usna_week3,
+          usna_week4,
+          align = TRUE,
+          type = "text",
+          se = list(usna_week1_err,
+                    usna_week2_err,
+                    usna_week3_err,
+                    usna_week4_err,
+                    model_base_robust_err
+                    )
+          )
+```
+
+### USNA vs. ROTC Results
+
+The difference in percent effect between USNA and ROTC students is immediately noticeable.  USNA students are `r rotc_percentage_effect - usna_percentage_effect`\% less affected by the meditation class.  We can take a moment to check if this difference is statistically significant.
+
+```{r difference in means between ROTC and USNA by meditation, warning=FALSE}
+#isolate only data provided with consent
+d_combined <- d_combined[consent=="Yes"]
+
+diff_means_meditation_school <- d_combined[meditation_participation == '1', lm(gad7score_log ~ school)]
+pvalue_diff_means_meditation_school <- coef(summary(diff_means_meditation_school))[2,4]
+```
+The difference in the effect of meditation on the ROTC vs. USNA students is not statistically significant with a p-value of `r pvalue_diff_means_meditation_school`.  As a result of this, we can comfortably continue in our research study with added covariates and USNA only subjects knowing we will gleam insights that could very well affect both USNA as well as ROTC students.
+
+\newpage
+
+### Base Model Using Aggregate USNA and ROTC Data
+
+Before we continue with the USNA model including added covariates, we take one last look at the effect of meditation class on the aggregate of USNA and ROTC students.    
+
+```{r base model COMBINED, warning = FALSE}
+model_base_combined <- d_combined[ , lm(gad7score_log ~ meditation_participation)] 
+model_base_combined_robust_err <-coeftest(model_base_combined, vcovHC)[ , "Std. Error"] #robust
+
+combined_percentage_effect <- ((exp(abs(coef(summary(model_base_combined))[2,1])))-1)*100
+combined_pvalue_effect <- coef(summary(model_base_combined))[2,4]
+```
+
+The stargazer output of the logarithmic transformation on the gad7score dependent variable is:   
+
+```{r base model COMBINED stargazer, echo=FALSE, include = TRUE, warning=FALSE}
+stargazer(model_base_combined,
+          align = TRUE,
+          type = "text",
+          single.row = TRUE,
+          se = list(model_base_combined_robust_err)
+          )
+```
+The result of the base model is a statistically significant reduction in anxiety from meditation of `r combined_percentage_effect`\% and a miniscule, highly significant p-value of `r combined_pvalue_effect`, much less than 0.05.  
+
+\newpage
+
+### USNA Modeling with Additional Covariates 
+
+Our complete model includes all of the covariates collected with our USNA participants.
+
+$$\log(gad\_7\_score) = \beta_0 +\beta_1meditation\_participation +\beta_2dogs\_in\_household + \\ \beta_3military\_parents$$
+$$+\beta_4navy\_pilot\_before +\beta_5religion +\beta_6income\_bracket +\epsilon$$
+
+```{r}
+#Adding covariates
+
+model_dogs <- d[ , lm(gad7score_log ~ meditation_participation + dogs)] 
+model_dogs_robust_err <-coeftest(model_dogs, vcovHC)[ , "Std. Error"] #robust
+#summary(model_dogs)
+
+model_parents <- d[ , lm(gad7score_log ~ meditation_participation + parents)] 
+model_parents_robust_err <-coeftest(model_parents, vcovHC)[ , "Std. Error"] #robust
+#summary(model_parents)
+
+model_navy_before <- d[ , lm(gad7score_log ~ meditation_participation + navy_before)] 
+model_navy_before_robust_err <-coeftest(model_navy_before, vcovHC)[ , "Std. Error"] #robust
+#summary(model_navy_before)
+
+model_religion <- d[ , lm(gad7score_log ~ meditation_participation + religion)] 
+model_religion_robust_err <-coeftest(model_religion, vcovHC)[ , "Std. Error"] #robust
+#summary(model_religion)
+
+model_income <- d[ , lm(gad7score_log ~ meditation_participation + income)] 
+model_income_robust_err <-coeftest(model_income, vcovHC)[ , "Std. Error"] #robust
+#summary(model_income)
+
+#ave gad = 3.00, ate -.86(.38) pvalue .025*
+model_kitchen_sink <- d[ , lm(gad7score_log ~ meditation_participation + dogs + parents + navy_before + religion + income)] 
+model_kitchen_sink_robust_err <-coeftest(model_kitchen_sink, vcovHC)[ , "Std. Error"] #robust
+#summary(model_kitchen_sink)
+```
+\newpage
+### Covariate Impact on Base Model and F-Test
+
+
+```{r, warning=FALSE, echo=FALSE, include = TRUE}
+stargazer(model_base,
+          model_kitchen_sink,
+          align = TRUE,
+          type = "text",
+          single.row = TRUE,
+          se = list(model_base_robust_err, 
+                    model_kitchen_sink_robust_err)
+          )
+                    
+```
+
+```{r ANOVA, warning=FALSE, echo=FALSE, include = TRUE}
+Anova(model_kitchen_sink, test="F")
+```
+
+We can see from the comparison between the base model and the one including all covariates, as well as through an "F" test analysis that none of the covariates add statistically significant value to the base model.  We can also see how the coefficient for meditation participation changes only slightly.  We would like to see the standard error reduce as we add covariates.  Unfortunately, we did not see that, but thankfully the change in standard error was also negligible.  
+
+\newpage
+
+## Conclusion and Next Steps
+
+This study measured the very short term impact of a meditation class on a cohort of ROTC and USNA students.  The students experience very similar levels of stress with varying results of statistically significant reduction in stress.  Though the data is promising, consideration must be given to the underlying structure of the experiment:  
+
+1.  The exploration of two populations of students (ROTC and USNA) with non-statistically significant differences in results.  It cannot be ignored that they remain two very different sets of experiences for students.  More research should be done into how to isolate covariates to better examine these differences.
+
+2.  The class was 1 hour long with no follow up all the way to survey 5 days later.  Although a carefully thought out randomization method was used, that would hopefully remove the impact of outside covariates to the overall effect of meditation, so many other factors remain that could have affected the students level of stress.  From the impact of outside news, including a tragic school shooting in the middle of the experiment, to the impact of other possible omitted variables, to the possible impact of spill over as students had the chance to communicate about the class, a more carefully executed experiment could mitigate these factors and create more accurate measurements.
+
+3.  The fact the impact on stress varied so much more during USNA weeks than ROTC weeks, leaves a lot left to explore.  Despite the fact that the results between the two academic systems is not statistically significant, there are very real differences that should be explored.  
+
+Finally, we look forward to running this experiment next year.  With all of the additional lessons learned, and as we explore the correct methods for ethical review, we are interested in continuing to explore the results and the impact the students can have via meditation.  
