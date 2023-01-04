@@ -4,7 +4,7 @@
 
 ### Projects 
 
-[NLP & Deep Learning](/sample_page)
+[NLP & Deep Learning](/projects/nlp/qg_project_page)
 <img src="images/nlp_dl.jpg?raw=true"/>
 
 ---
@@ -12,7 +12,7 @@
 <img src="images/dummy_thumbnail.jpg?raw=true"/>
 
 ---
-[Experiment & Causal Inference](http://example.com/)
+[Experiment & Causal Inference](/sample_page)
 <img src="images/dummy_thumbnail.jpg?raw=true"/>
 
 ---
