@@ -4,7 +4,7 @@
 
 ### Projects 
 
-[NLP & Deep Learning](/projects/nlp/qg_project_page.md)
+[NLP & Deep Learning](/projects/nlp/qg_project_page)
 <img src="images/nlp_dl.jpg?raw=true"/>
 
 ---
