@@ -2,7 +2,7 @@
 
 ---
 
-### Category Name 1 
+### Projects 
 
 [NLP & Deep Learning](/sample_page)
 <img src="images/nlp_dl.jpg?raw=true"/>
