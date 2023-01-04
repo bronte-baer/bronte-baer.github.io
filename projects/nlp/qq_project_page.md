@@ -5,7 +5,7 @@
 
 ### 1. Suggest hypotheses about the causes of observed phenomena
 
-[embed][http://example.com/file.pdf](https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf)[/embed]
+[embed]https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf[/embed]
 
 ```javascript
 if (isAwesome){
