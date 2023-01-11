@@ -9,10 +9,10 @@
 
 ---
 [Statistics](/pdf/sample_presentation.pdf)
-<img src="images/dummy_thumbnail.jpg?raw=true"/>
+<img src="images/stats.jpg?raw=true"/>
 
 ---
-[Experiment & Causal Inference](/sample_page)
+[Experiments & Causal Inference](/sample_page)
 <img src="images/dummy_thumbnail.jpg?raw=true"/>
 
 ---
