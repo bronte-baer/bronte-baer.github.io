@@ -7,5 +7,3 @@
 
 <object data="{{ site.url }}{{ site.baseurl }}/projects/nlp/Question_Generation.pdf" width="600" height="600" type="application/pdf"></object>
 
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
