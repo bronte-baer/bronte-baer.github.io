@@ -8,7 +8,8 @@
 <img src="images/nlp.jpg?raw=true"/>
 
 ---
-[Statistics](/pdf/sample_presentation.pdf)
+[Statistics](/projects/statistics/statistics_project_page)
+<!-- (/pdf/sample_presentation.pdf) -->
 <img src="images/stats.jpg?raw=true"/>
 
 ---
