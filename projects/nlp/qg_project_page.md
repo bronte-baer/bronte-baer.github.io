@@ -7,6 +7,8 @@
 
 [embed]https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf[/embed]
 
+[embed]/projects/nlp/Question_Generation.pdf[embed]
+
 ```javascript
 if (isAwesome){
   return true
