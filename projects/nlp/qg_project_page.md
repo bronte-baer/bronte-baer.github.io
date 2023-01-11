@@ -7,7 +7,14 @@
 
 #[embed]https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf[/embed]
 
-<object data="../master/projects/nlp/Question_Generation.pdf" width="1000" height="1000" type='application/pdf'></object>
+
+<object data="[http://yoursite.com/the.pdf](https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf)" type="application/pdf" width="700px" height="700px">
+    <embed src="[http://yoursite.com/the.pdf](https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf)">
+        <p>This browser does not support PDFs. Please download the PDF to view it: <a href="[http://yoursite.com/the.pdf](https://github.com/bronte-baer/bronte-baer.github.io/blob/master/projects/nlp/Question_Generation.pdf)">Download PDF</a>.</p>
+    </embed>
+</object>
+
+
 
 ```javascript
 if (isAwesome){
