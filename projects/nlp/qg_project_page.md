@@ -5,3 +5,4 @@
 
 <object data="{{ site.url }}{{ site.baseurl }}/projects/nlp/Question_Generation.pdf" width="600" height="600" type="application/pdf"></object>
 
+<a href="https://github.com/jeanlucjackson/w266_final_project">GitHub Project Repo</a> 
