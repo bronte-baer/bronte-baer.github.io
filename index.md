@@ -13,11 +13,11 @@
 
 ---
 [Experiments & Causal Inference](/sample_page)
-<img src="images/dummy_thumbnail.jpg?raw=true"/>
+<img src="images/experiment.jpg?raw=true"/>
 
 ---
 [Data Analysis](http://example.com/)
-<img src="images/dummy_thumbnail.jpg?raw=true"/>
+<img src="images/analysis.jpg?raw=true"/>
 
 ---
 
