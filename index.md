@@ -5,7 +5,7 @@
 ### Projects 
 
 [NLP & Deep Learning](/projects/nlp/qg_project_page)
-<img src="images/nlp_dl.jpg?raw=true"/>
+<img src="images/nlp.jpg?raw=true"/>
 
 ---
 [Statistics](/pdf/sample_presentation.pdf)
