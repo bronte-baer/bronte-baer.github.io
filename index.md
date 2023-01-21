@@ -18,7 +18,8 @@
 <img src="images/experiment.jpg?raw=true"/>
 
 ---
-[Data Analysis](http://example.com/)
+[Data Analysis](/analysis_page)
+<!-- (http://example.com/) -->
 <img src="images/analysis.jpg?raw=true"/>
 
 ---
