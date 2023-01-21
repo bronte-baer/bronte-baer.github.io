@@ -13,12 +13,12 @@
 <img src="images/stats.jpg?raw=true"/>
 
 ---
-[Experiments & Causal Inference](/experiments_page)
+[Experiments & Causal Inference](/projects/experiments/experiments_page)
 <!-- (/sample_page) -->
 <img src="images/experiment.jpg?raw=true"/>
 
 ---
-[Data Analysis](/analysis_page)
+[Data Analysis](/projects/analysis/analysis_page)
 <!-- (http://example.com/) -->
 <img src="images/analysis.jpg?raw=true"/>
 
