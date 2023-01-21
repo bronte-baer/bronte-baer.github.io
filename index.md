@@ -13,7 +13,8 @@
 <img src="images/stats.jpg?raw=true"/>
 
 ---
-[Experiments & Causal Inference](/sample_page)
+[Experiments & Causal Inference](/experiments_page)
+<!-- (/sample_page) -->
 <img src="images/experiment.jpg?raw=true"/>
 
 ---
